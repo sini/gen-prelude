@@ -28,14 +28,17 @@ replacement) and out of scope here.
 ## Usage
 
 ```nix
+# As a flake input (inputs.gen-prelude.url = "github:sini/gen-prelude"):
 let
-  prelude = import gen-prelude { };
+  prelude = inputs.gen-prelude.lib; # or `inputs.gen-prelude { }` (the flake is a functor)
 in
 prelude.genAttrs [ "a" "b" ] (n: n + "!") # => { a = "a!"; b = "b!"; }
+
+# Or import the path directly:  import "${inputs.gen-prelude}/lib" { }
 ```
 
-`import ./lib { }` takes no inputs — the prelude is `builtins` aliases plus vendored
-pure utilities. Consumers depend on `gen-prelude` instead of `nixpkgs.lib`.
+The lib takes no inputs — it is `builtins` aliases plus vendored pure utilities.
+Consumers depend on `gen-prelude` instead of `nixpkgs.lib`.
 
 ## Surface
 

@@ -17,6 +17,7 @@ let
     attrNames
     attrValues
     concatLists
+    concatMap
     concatStringsSep
     elem
     elemAt
@@ -40,8 +41,6 @@ let
     ;
 
   nameValuePair = name: value: { inherit name value; };
-  # nixpkgs lib.concatMap is builtins.concatMap; vendor as concatLists∘map for safety.
-  concatMap = f: xs: concatLists (map f xs);
 in
 {
   # ── builtins re-exports (aliases; zero new code) ──
@@ -51,6 +50,7 @@ in
     attrNames
     attrValues
     concatLists
+    concatMap
     concatStringsSep
     elem
     elemAt
@@ -74,7 +74,7 @@ in
     ;
 
   # ── vendored pure utilities (behavior-identical to nixpkgs lib) ──
-  inherit nameValuePair concatMap;
+  inherit nameValuePair;
 
   genAttrs =
     names: f:
@@ -87,8 +87,15 @@ in
   optional = c: x: if c then [ x ] else [ ];
   optionalAttrs = c: a: if c then a else { };
   optionalString = c: s: if c then s else "";
-  last = xs: elemAt xs (length xs - 1);
-  init = xs: genList (i: elemAt xs i) (length xs - 1);
+  last =
+    xs:
+    if xs == [ ] then throw "gen-prelude.last: list must not be empty" else elemAt xs (length xs - 1);
+  init =
+    xs:
+    if xs == [ ] then
+      throw "gen-prelude.init: list must not be empty"
+    else
+      genList (i: elemAt xs i) (length xs - 1);
   unique = foldl' (acc: x: if elem x acc then acc else acc ++ [ x ]) [ ];
   filterAttrs =
     pred: a:
