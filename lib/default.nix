@@ -34,6 +34,7 @@ let
     map
     mapAttrs
     match
+    partition
     sort
     stringLength
     substring
@@ -41,6 +42,67 @@ let
     ;
 
   nameValuePair = name: value: { inherit name value; };
+
+  # ── toposort (vendored verbatim from nixpkgs lib/lists.nix) ──
+  # toposort + its internal helpers listDfs/reverseList, copied byte-for-byte so the
+  # `{ result } | { cycle; loops }` contract matches nixpkgs exactly (consumers like
+  # gen-derive's dag and gen-vars depend on `? result`). Only `toposort` is exported.
+  reverseList =
+    xs:
+    let
+      l = length xs;
+    in
+    genList (n: elemAt xs (l - n - 1)) l;
+
+  listDfs =
+    stopOnCycles: before: list:
+    let
+      dfs' =
+        us: visited: rest:
+        let
+          c = filter (x: before x us) visited;
+          b = partition (x: before x us) rest;
+        in
+        if stopOnCycles && (length c > 0) then
+          {
+            cycle = us;
+            loops = c;
+            inherit visited rest;
+          }
+        else if length b.right == 0 then
+          # nothing is before us
+          {
+            minimal = us;
+            inherit visited rest;
+          }
+        else
+          # grab the first one before us and continue
+          dfs' (head b.right) ([ us ] ++ visited) (tail b.right ++ b.wrong);
+    in
+    dfs' (head list) [ ] (tail list);
+
+  toposort =
+    before: list:
+    let
+      dfsthis = listDfs true before list;
+      toporest = toposort before (dfsthis.visited ++ dfsthis.rest);
+    in
+    if length list < 2 then
+      # finish
+      { result = list; }
+    else if dfsthis ? cycle then
+      # there's a cycle, starting from the current vertex, return it
+      {
+        cycle = reverseList ([ dfsthis.cycle ] ++ dfsthis.visited);
+        inherit (dfsthis) loops;
+      }
+    else if toporest ? cycle then
+      # there's a cycle somewhere else in the graph, return it
+      toporest
+    # Slow, but short. Can be made a bit faster with an explicit stack.
+    else
+      # there are no cycles
+      { result = [ dfsthis.minimal ] ++ toporest.result; };
 in
 {
   # ── builtins re-exports (aliases; zero new code) ──
@@ -67,6 +129,7 @@ in
     map
     mapAttrs
     match
+    partition
     sort
     stringLength
     substring
@@ -129,7 +192,7 @@ in
     in
     if substring 0 n s == pre then substring n (stringLength s - n) s else s;
 
-  # TODO(vendor): copy nixpkgs `lib.toposort` verbatim (~30 LOC) for byte-fidelity
-  # before any consumer (gen-derive / gen-vars) migrates onto it. See design spec §2,§3.
-  toposort = throw "gen-prelude.toposort: not yet vendored — copy nixpkgs lib.toposort verbatim";
+  # Partial-order topological sort (vendored above in the let block). Returns
+  # `{ result = sorted; }` or `{ cycle; loops; }` — identical to nixpkgs lib.toposort.
+  inherit toposort;
 }

@@ -24,6 +24,9 @@ let
   gt1 = _n: v: v > 1;
   showKV = n: v: "${n}=${toString v}";
   idxShow = i: x: "${toString i}:${toString x}";
+  # toposort comparators: asc = linear order; cyc = a mutual 1↔2 cycle.
+  asc = a: b: a < b;
+  cyc = a: b: (a == 1 && b == 2) || (a == 2 && b == 1);
 in
 {
   flake.tests = {
@@ -58,11 +61,27 @@ in
           })).b;
         expected = 2;
       };
-      # toposort is a deliberate throw-stub (not yet vendored) — it must throw, not
-      # poison set construction.
-      test-toposort-stub-throws = {
-        expr = (builtins.tryEval p.toposort).success;
-        expected = false;
+      # toposort (vendored verbatim): linear order sorts ascending; cycles report `cycle`.
+      test-toposort-result = {
+        expr =
+          (p.toposort (a: b: a < b) [
+            3
+            1
+            2
+          ]).result;
+        expected = [
+          1
+          2
+          3
+        ];
+      };
+      test-toposort-cycle-detected = {
+        expr =
+          (p.toposort (a: b: (a == 1 && b == 2) || (a == 2 && b == 1)) [
+            1
+            2
+          ]) ? cycle;
+        expected = true;
       };
       test-last-empty-throws = {
         expr = (builtins.tryEval (p.last [ ])).success;
@@ -199,6 +218,55 @@ in
       test-removePrefix-nomatch = {
         expr = p.removePrefix "xy" "abcd";
         expected = lib.removePrefix "xy" "abcd";
+      };
+
+      # toposort — vendored verbatim; must match nixpkgs' { result } | { cycle; loops }.
+      # asc = "a must come before b iff a < b" (a linear partial order).
+      test-toposort-chain = {
+        expr = p.toposort asc [
+          3
+          1
+          2
+        ];
+        expected = lib.toposort asc [
+          3
+          1
+          2
+        ];
+      };
+      test-toposort-dag = {
+        expr = p.toposort asc [
+          5
+          2
+          8
+          1
+          3
+        ];
+        expected = lib.toposort asc [
+          5
+          2
+          8
+          1
+          3
+        ];
+      };
+      test-toposort-single = {
+        expr = p.toposort asc [ 7 ];
+        expected = lib.toposort asc [ 7 ];
+      };
+      test-toposort-empty = {
+        expr = p.toposort asc [ ];
+        expected = lib.toposort asc [ ];
+      };
+      test-toposort-cycle = {
+        expr = p.toposort cyc [
+          1
+          2
+        ];
+        expected = lib.toposort cyc [
+          1
+          2
+        ];
       };
     };
   };
