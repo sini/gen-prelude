@@ -7,7 +7,6 @@
   outputs =
     { ... }:
     {
-      lib = import ./. { };
-      __functor = _: import ./.;
+      lib = import ./lib { };
     };
 }
