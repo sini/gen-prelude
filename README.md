@@ -30,11 +30,11 @@ replacement) and out of scope here.
 ```nix
 # As a flake input (inputs.gen-prelude.url = "github:sini/gen-prelude"):
 let
-  prelude = inputs.gen-prelude.lib; # or `inputs.gen-prelude { }` (the flake is a functor)
+  prelude = inputs.gen-prelude.lib;
 in
 prelude.genAttrs [ "a" "b" ] (n: n + "!") # => { a = "a!"; b = "b!"; }
 
-# Or import the path directly:  import "${inputs.gen-prelude}/lib" { }
+# Or import the path directly:  import "${inputs.gen-prelude}/lib"
 ```
 
 The lib takes no inputs — it is `builtins` aliases plus vendored pure utilities.
