@@ -9,7 +9,8 @@
 #
 # Design + vendor strategy:
 #   den-architecture/gen-specs/gen-prelude/2026-06-26-gen-prelude-design.md
-{ ... }:
+#
+# Zero dependencies, so this is a bare value (not a function): `import ./lib`.
 let
   inherit (builtins)
     all

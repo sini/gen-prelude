@@ -7,7 +7,7 @@
   outputs =
     inputs@{ gen, ... }:
     let
-      genPrelude = import ../lib { };
+      genPrelude = import ../lib;
     in
     gen.lib.mkCi {
       inherit inputs;
