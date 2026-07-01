@@ -7,9 +7,6 @@
 # NOT a type system, NOT a module-system shim (the `lib.types`/`mkOption`/`evalModules`
 # tier is a separate Korora-class concern, out of scope here).
 #
-# Design + vendor strategy:
-#   den-architecture/gen-specs/gen-prelude/2026-06-26-gen-prelude-design.md
-#
 # Zero dependencies, so this is a bare value (not a function): `import ./lib`.
 let
   inherit (builtins)
