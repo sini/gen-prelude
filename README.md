@@ -105,7 +105,7 @@ attrset — no arguments, since the lib depends on nothing.
 ## API Reference
 
 Every name below is a top-level member of the lib attrset (verified against
-`nix eval .#lib --apply builtins.attrNames`). 45 members total.
+`nix eval .#lib --apply builtins.attrNames`). 46 members total.
 
 ### builtins re-exports
 
@@ -134,6 +134,8 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
 - `unique xs` — order-preserving deduplication.
 - `filterAttrs pred attrs` — attrset keeping entries where `pred name value`.
 - `mapAttrsToList f attrs` — list of `f name value` over the attrset.
+- `groupBy keyOf xs` — attrset grouping each element of `xs` under the string key
+  `keyOf x`; each value is the list of elements sharing that key, in input order.
 - `concatMapStringsSep sep f xs` — `map f xs` joined by `sep`.
 - `hasPrefix pre s` — whether `s` starts with `pre`.
 - `imap0 f xs` — `map` with a 0-based index: `f index element`.
@@ -155,11 +157,12 @@ cd ci && nix flake check
 
 The `ci/` directory is a separate flake (it pulls nixpkgs only to supply the `lib`
 oracle the fidelity suite compares against — the lib itself pulls nothing). It runs
-**41 tests across 2 suites**:
+**47 tests across 2 suites**:
 
-- **`prelude`** (7) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
-  `filterAttrs`, `fix`, `toposort` result + cycle, empty-list throw).
-- **`prelude-fidelity`** (34) — the load-bearing guard: for every vendored utility,
+- **`prelude`** (10) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
+  `filterAttrs`, `fix`, `toposort` result + cycle, empty-list throw, `groupBy` basic +
+  empty + collision-order stability).
+- **`prelude-fidelity`** (37) — the load-bearing guard: for every vendored utility,
   `prelude.X input == lib.X input` over normal and boundary inputs (empty lists, absent
   prefixes, reversed ranges, cycles). This is what keeps the vendored copies
   byte-behavior-identical to nixpkgs `lib`.
@@ -175,7 +178,7 @@ behavior-identically from `nixpkgs` `lib`:
 
 | Utility | nixpkgs source |
 |---------|----------------|
-| `genAttrs`, `filterAttrs`, `mapAttrsToList`, `nameValuePair`, `optionalAttrs` | `lib/attrsets.nix` |
+| `genAttrs`, `filterAttrs`, `mapAttrsToList`, `groupBy`, `nameValuePair`, `optionalAttrs` | `lib/attrsets.nix` |
 | `optional`, `last`, `init`, `unique`, `imap0`, `range`, `toposort` (+ `listDfs`) | `lib/lists.nix` |
 | `optionalString`, `concatMapStringsSep`, `hasPrefix`, `removePrefix` | `lib/strings.nix` |
 | `fix`, `max` | `lib/trivial.nix` / `lib/fixed-points.nix` |

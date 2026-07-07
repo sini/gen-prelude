@@ -170,6 +170,15 @@ in
       ) (attrNames a)
     );
   mapAttrsToList = f: a: map (n: f n a.${n}) (attrNames a);
+  groupBy =
+    keyOf: xs:
+    foldl' (
+      acc: x:
+      let
+        key = keyOf x;
+      in
+      acc // { ${key} = (acc.${key} or [ ]) ++ [ x ]; }
+    ) { } xs;
   concatMapStringsSep =
     sep: f: xs:
     concatStringsSep sep (map f xs);

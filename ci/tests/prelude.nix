@@ -87,6 +87,41 @@ in
         expr = (builtins.tryEval (p.last [ ])).success;
         expected = false;
       };
+      # groupBy: partition xs by keyOf; within-group order stays input order.
+      test-groupBy = {
+        expr = p.groupBy (n: if n > 2 then "big" else "small") xs;
+        expected = {
+          small = [
+            1
+            1
+            2
+            2
+          ];
+          big = [
+            3
+            3
+          ];
+        };
+      };
+      test-groupBy-empty = {
+        expr = p.groupBy (n: toString n) [ ];
+        expected = { };
+      };
+      # Collision stability: all three share a key and must keep input order.
+      test-groupBy-collision-order = {
+        expr = p.groupBy (s: builtins.substring 0 1 s) [
+          "art"
+          "ale"
+          "arc"
+        ];
+        expected = {
+          a = [
+            "art"
+            "ale"
+            "arc"
+          ];
+        };
+      };
     };
 
     # Fidelity: prelude.<f> == nixpkgs lib.<f> for every vendored utility.
@@ -266,6 +301,29 @@ in
         expected = lib.toposort cyc [
           1
           2
+        ];
+      };
+
+      test-groupBy = {
+        expr = p.groupBy (n: if n > 2 then "big" else "small") xs;
+        expected = lib.groupBy (n: if n > 2 then "big" else "small") xs;
+      };
+      test-groupBy-empty = {
+        expr = p.groupBy (n: toString n) [ ];
+        expected = lib.groupBy (n: toString n) [ ];
+      };
+      test-groupBy-collision = {
+        expr = p.groupBy (s: builtins.substring 0 1 s) [
+          "art"
+          "ale"
+          "banana"
+          "arc"
+        ];
+        expected = lib.groupBy (s: builtins.substring 0 1 s) [
+          "art"
+          "ale"
+          "banana"
+          "arc"
         ];
       };
     };
