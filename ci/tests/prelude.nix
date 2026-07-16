@@ -107,6 +107,22 @@ in
         expr = p.groupBy (n: toString n) [ ];
         expected = { };
       };
+      # Backtracking-free: hasInfix over a large string must not overflow the C stack
+      # (nixpkgs `lib.hasInfix`'s `.*needle.*` regex does, at depth ∝ length). 40k chars.
+      test-hasInfix-large-string-safe = {
+        expr =
+          let
+            big = lib.concatStrings (builtins.genList (_: "abcdefghij") 4000);
+          in
+          [
+            (p.hasInfix "needle" big)
+            (p.hasInfix "abcdefghij" big)
+          ];
+        expected = [
+          false
+          true
+        ];
+      };
       # Collision stability: all three share a key and must keep input order.
       test-groupBy-collision-order = {
         expr = p.groupBy (s: builtins.substring 0 1 s) [
@@ -215,6 +231,28 @@ in
       test-hasPrefix-nomatch = {
         expr = p.hasPrefix "xy" "abc";
         expected = lib.hasPrefix "xy" "abc";
+      };
+      test-hasInfix-match = {
+        expr = p.hasInfix "bc" "abcd";
+        expected = lib.hasInfix "bc" "abcd";
+      };
+      test-hasInfix-nomatch = {
+        expr = p.hasInfix "xy" "abcd";
+        expected = lib.hasInfix "xy" "abcd";
+      };
+      # Regex metacharacters in the needle must be treated literally (the purity
+      # scan looks for tokens like `lib.types` and `{ lib,`).
+      test-hasInfix-metachars = {
+        expr = p.hasInfix "lib.types" "x = lib.types.str;";
+        expected = lib.hasInfix "lib.types" "x = lib.types.str;";
+      };
+      test-hasInfix-metachars-nomatch = {
+        expr = p.hasInfix "a.c" "abc";
+        expected = lib.hasInfix "a.c" "abc";
+      };
+      test-escapeRegex = {
+        expr = p.escapeRegex "a.b*c{d,e}";
+        expected = lib.escapeRegex "a.b*c{d,e}";
       };
       test-imap0 = {
         expr = p.imap0 idxShow xs;

@@ -33,13 +33,45 @@ let
     mapAttrs
     match
     partition
+    replaceStrings
     sort
+    split
     stringLength
     substring
     tail
     ;
 
   nameValuePair = name: value: { inherit name value; };
+
+  # ── string containment (backtracking-free) ──
+  # nixpkgs `lib.hasInfix infix s` is `match ".*${escapeRegex infix}.*" s != null`; the
+  # leading/trailing `.*` make std::regex recurse to depth ∝ `stringLength s`, overflowing
+  # the C stack when scanning whole source files (readFile'd libraries in purity checks).
+  # Split on the escaped literal instead: `split` carries no `.*` anchor and scans linearly.
+  # Result is the same boolean as nixpkgs (fidelity-tested), so it is a drop-in.
+  # Metacharacter set matches nixpkgs `lib.escapeRegex` verbatim (stringToCharacters
+  # "\\[{()^$?*+.|]") so the escaped output is byte-identical — a drop-in.
+  escapeRegex =
+    let
+      metachars = [
+        "\\"
+        "["
+        "{"
+        "("
+        ")"
+        "^"
+        "$"
+        "?"
+        "*"
+        "+"
+        "."
+        "|"
+        "]"
+      ];
+    in
+    replaceStrings metachars (map (c: "\\" + c) metachars);
+
+  hasInfix = infix: content: infix == "" || length (split (escapeRegex infix) content) > 1;
 
   # ── toposort (vendored verbatim from nixpkgs lib/lists.nix) ──
   # toposort + its internal helpers listDfs/reverseList, copied byte-for-byte so the
@@ -183,6 +215,8 @@ in
     sep: f: xs:
     concatStringsSep sep (map f xs);
   hasPrefix = pre: s: substring 0 (stringLength pre) s == pre;
+  # Drop-in for nixpkgs lib.hasInfix / lib.escapeRegex, but linear (no `.*` backtracking).
+  inherit hasInfix escapeRegex;
   imap0 = f: xs: genList (i: f i (elemAt xs i)) (length xs);
   fix =
     f:
