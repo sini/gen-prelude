@@ -15,8 +15,10 @@ Dependency class: **A (pure)** — the lib takes no flake inputs and imports not
 `nixpkgs.lib`; it is the nixpkgs-lib-free base every other pure gen lib depends on. The
 lib flake carries zero inputs, so a consumer's lock gains no transitive nixpkgs
 dependency from pulling gen-prelude in. Purity is enforced structurally (the flake has
-no inputs to draw a `lib` from), and every vendored utility is held byte-behavior
--identical to its nixpkgs counterpart by the `prelude-fidelity` test suite.
+no inputs to draw a `lib` from), and every utility vendored from nixpkgs is held
+byte-behavior-identical to its counterpart by the `prelude-fidelity` test suite. (The
+few gen-prelude-originals with no nixpkgs counterpart — `indexOf`, `dedupByKey` — are
+covered by the literal-expectation `prelude` suite instead; see [Provenance](#provenance).)
 
 ## Table of Contents
 
@@ -105,7 +107,7 @@ attrset — no arguments, since the lib depends on nothing.
 ## API Reference
 
 Every name below is a top-level member of the lib attrset (verified against
-`nix eval .#lib --apply builtins.attrNames`). 46 members total.
+`nix eval .#lib --apply builtins.attrNames`). 51 members total.
 
 ### builtins re-exports
 
@@ -132,6 +134,8 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
 - `last xs` — final element (throws on `[ ]`).
 - `init xs` — all but the final element (throws on `[ ]`).
 - `unique xs` — order-preserving deduplication.
+- `findFirst pred default list` — the first element satisfying `pred`, else `default`
+  (nixpkgs `lib.findFirst`; `foldl'`-based, stack-safe, no early cutoff).
 - `filterAttrs pred attrs` — attrset keeping entries where `pred name value`.
 - `mapAttrsToList f attrs` — list of `f name value` over the attrset.
 - `groupBy keyOf xs` — attrset grouping each element of `xs` under the string key
@@ -149,6 +153,20 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
   nixpkgs exactly; consumers such as gen-graph's `phaseOrder` and gen-vars rely on the
   `? result` discriminant.
 
+### gen-prelude-original (no nixpkgs equivalent)
+
+Two small helpers with no `nixpkgs.lib` counterpart, so they are covered by the
+literal-expectation `prelude` suite rather than `prelude-fidelity`:
+
+- `indexOf xs x` — first position of `x` in `xs` (structural `==`), or `-1` if absent.
+  List-first arg order (`xs` then `x`), built on the same stack-safe first-match scan as
+  `findFirst`.
+- `dedupByKey getKey list` — first-occurrence-wins dedup by `getKey x`, order-preserving.
+  A `null` key is **always kept and never deduplicated** — the safe direction against
+  silent cross-scope content-loss (a keyless element cannot be proven a duplicate, so a
+  false-keep equal-merges harmlessly whereas a false-collapse silently drops distinct
+  content). Vendored from den-hoag `lib/dedup-by-key.nix`.
+
 ## Testing
 
 ```sh
@@ -157,15 +175,19 @@ cd ci && nix flake check
 
 The `ci/` directory is a separate flake (it pulls nixpkgs only to supply the `lib`
 oracle the fidelity suite compares against — the lib itself pulls nothing). It runs
-**47 tests across 2 suites**:
+**66 tests across 2 suites**:
 
-- **`prelude`** (10) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
+- **`prelude`** (19) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
   `filterAttrs`, `fix`, `toposort` result + cycle, empty-list throw, `groupBy` basic +
-  empty + collision-order stability).
-- **`prelude-fidelity`** (37) — the load-bearing guard: for every vendored utility,
-  `prelude.X input == lib.X input` over normal and boundary inputs (empty lists, absent
-  prefixes, reversed ranges, cycles). This is what keeps the vendored copies
-  byte-behavior-identical to nixpkgs `lib`.
+  empty + collision-order stability, plus the gen-prelude-originals `dedupByKey`
+  first-occurrence + null-keep + empty, `indexOf` present/absent/first, and `findFirst`
+  match/default).
+- **`prelude-fidelity`** (47) — the load-bearing guard: for every nixpkgs-vendored
+  utility, `prelude.X input == lib.X input` over normal and boundary inputs (empty lists,
+  absent prefixes, reversed ranges, cycles). This is what keeps the vendored copies
+  byte-behavior-identical to nixpkgs `lib`. (`indexOf` is additionally cross-checked
+  against `lib.lists.findFirstIndex`; `dedupByKey` has no nixpkgs oracle and lives only in
+  the `prelude` suite.)
 
 There is no separate `purity` suite because purity is structural: the lib flake declares
 no inputs, so there is no `nixpkgs.lib` in scope to accidentally depend on.
@@ -179,7 +201,7 @@ behavior-identically from `nixpkgs` `lib`:
 | Utility | nixpkgs source |
 |---------|----------------|
 | `genAttrs`, `filterAttrs`, `mapAttrsToList`, `groupBy`, `nameValuePair`, `optionalAttrs` | `lib/attrsets.nix` |
-| `optional`, `last`, `init`, `unique`, `imap0`, `range`, `toposort` (+ `listDfs`) | `lib/lists.nix` |
+| `optional`, `last`, `init`, `unique`, `imap0`, `range`, `toposort` (+ `listDfs`), `findFirst` | `lib/lists.nix` |
 | `optionalString`, `concatMapStringsSep`, `hasPrefix`, `removePrefix` | `lib/strings.nix` |
 | `fix`, `max` | `lib/trivial.nix` / `lib/fixed-points.nix` |
 
@@ -187,6 +209,14 @@ behavior-identically from `nixpkgs` `lib`:
 nixpkgs exactly. The `prelude-fidelity` test suite asserts each utility stays
 behavior-identical to its `nixpkgs.lib` original, so the vendoring cannot silently
 drift.
+
+Two members are **gen-prelude-original** (no nixpkgs origin), so they are held by the
+literal-expectation `prelude` suite rather than `prelude-fidelity`:
+
+| Utility | origin |
+|---------|--------|
+| `indexOf` | gen-prelude-original — small list helper (den-hoag hand-roll shape); shares the internal stack-safe `findFirstIndex` scan (`lib/lists.nix:575`) that also backs `findFirst` |
+| `dedupByKey` | vendored from den-hoag `lib/dedup-by-key.nix` (itself the port of v1 scope-walk `dedupByKey`); null-keep semantics have no `nixpkgs.lib` counterpart |
 
 ## License
 

@@ -133,6 +133,47 @@ let
     else
       # there are no cycles
       { result = [ dfsthis.minimal ] ++ toporest.result; };
+
+  # ── first-match search (findFirstIndex vendored from nixpkgs lib/lists.nix) ──
+  # findFirstIndex: stack-safe first-matching-index scan (nixpkgs' countdown-foldl' trick —
+  # reuses one stack frame, no naive recursion, no early cutoff). Internal: the shared scan
+  # under `findFirst` and `indexOf`. Returns the 0-based index of the first `pred`-satisfying
+  # element, else `default`.
+  findFirstIndex =
+    pred: default: list:
+    let
+      resultIndex = foldl' (
+        index: el: if index < 0 then (if pred el then -index - 1 else index - 1) else index
+      ) (-1) list;
+    in
+    if resultIndex < 0 then default else resultIndex;
+
+  # ── dedupByKey (vendored from den-hoag lib/dedup-by-key.nix; itself the port of v1 scope-walk
+  # dedupByKey @ pin 11866c16) — no nixpkgs equivalent, so not in the fidelity suite. ──
+  # First-occurrence-wins dedup by `getKey`, order-preserving. A `null` key is ALWAYS kept and
+  # NEVER entered into `seen` (the SAFE direction: a keyless element cannot be proven a
+  # cross-scope duplicate, so a false-keep of equal content equal-merges harmlessly, whereas a
+  # false-collapse of distinct content is silent content-loss). null-key nodes neither evict a
+  # later duplicate nor are evicted.
+  dedupByKey =
+    getKey: list:
+    let
+      go =
+        seen: items:
+        if items == [ ] then
+          [ ]
+        else
+          let
+            x = head items;
+            rest = tail items;
+            k = getKey x;
+          in
+          if k != null && seen ? ${k} then
+            go seen rest
+          else
+            [ x ] ++ go (if k != null then seen // { ${k} = true; } else seen) rest;
+    in
+    go { } list;
 in
 {
   # ── builtins re-exports (aliases; zero new code) ──
@@ -190,6 +231,27 @@ in
     else
       genList (i: elemAt xs i) (length xs - 1);
   unique = foldl' (acc: x: if elem x acc then acc else acc ++ [ x ]) [ ];
+
+  # findFirst pred default list — the first element satisfying `pred`, else `default`.
+  # Behavior-identical to nixpkgs lib.findFirst (foldl'-based via findFirstIndex; stack-safe,
+  # no early cutoff).
+  findFirst =
+    pred: default: list:
+    let
+      index = findFirstIndex pred null list;
+    in
+    if index == null then default else elemAt list index;
+
+  # indexOf xs x — first position of `x` in `xs` (structural ==), or -1 if absent. List-first
+  # arg order matches den-hoag's hand-rolls (stratum-scope.nix / declarations.nix) so consumers
+  # adopt by `inherit (prelude) indexOf`. Built on the stack-safe findFirstIndex scan.
+  # gen-prelude-original (no nixpkgs equivalent) → literal-expectation tested, not fidelity.
+  indexOf = xs: x: findFirstIndex (y: y == x) (-1) xs;
+
+  # dedupByKey getKey list — first-occurrence-wins dedup by key, order-preserving; a null key is
+  # always kept and never deduplicated. Vendored from den-hoag (no nixpkgs equivalent) → defined
+  # in the let block above, literal-expectation tested, not fidelity.
+  inherit dedupByKey;
   filterAttrs =
     pred: a:
     listToAttrs (

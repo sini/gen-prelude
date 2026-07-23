@@ -138,6 +138,107 @@ in
           ];
         };
       };
+
+      # dedupByKey: first-occurrence-wins by key; order-preserving.
+      test-dedupByKey-first-occ = {
+        expr = p.dedupByKey (n: n.k) [
+          {
+            k = "a";
+            v = 1;
+          }
+          {
+            k = "b";
+            v = 2;
+          }
+          {
+            k = "a";
+            v = 3;
+          }
+        ];
+        expected = [
+          {
+            k = "a";
+            v = 1;
+          }
+          {
+            k = "b";
+            v = 2;
+          }
+        ];
+      };
+      # ★ NULL-KEEP (load-bearing): both null-key nodes survive; a null between two real dups
+      #   neither evicts the later "a" nor is evicted — the second "a" is still dropped.
+      test-dedupByKey-null-keep = {
+        expr = p.dedupByKey (n: n.k) [
+          {
+            k = "a";
+            id = 1;
+          }
+          {
+            k = null;
+            id = 2;
+          }
+          {
+            k = null;
+            id = 3;
+          }
+          {
+            k = "a";
+            id = 4;
+          }
+        ];
+        expected = [
+          {
+            k = "a";
+            id = 1;
+          }
+          {
+            k = null;
+            id = 2;
+          }
+          {
+            k = null;
+            id = 3;
+          }
+        ];
+      };
+      test-dedupByKey-empty = {
+        expr = p.dedupByKey (n: n.k) [ ];
+        expected = [ ];
+      };
+
+      # indexOf: first position or -1.
+      test-indexOf-present = {
+        expr = p.indexOf [ "a" "b" "c" ] "b";
+        expected = 1;
+      };
+      test-indexOf-absent = {
+        expr = p.indexOf [ "a" "b" ] "z";
+        expected = -1;
+      };
+      test-indexOf-first = {
+        expr = p.indexOf [ "a" "b" "a" ] "a";
+        expected = 0;
+      };
+
+      # findFirst: readable literal checks (fidelity below also covers it).
+      test-findFirst-match = {
+        expr = p.findFirst (x: x > 2) 0 [
+          1
+          2
+          3
+          4
+        ];
+        expected = 3;
+      };
+      test-findFirst-default = {
+        expr = p.findFirst (x: x > 9) (-1) [
+          1
+          2
+          3
+        ];
+        expected = -1;
+      };
     };
 
     # Fidelity: prelude.<f> == nixpkgs lib.<f> for every vendored utility.
@@ -363,6 +464,30 @@ in
           "banana"
           "arc"
         ];
+      };
+
+      # findFirst — behavior-identical to nixpkgs lib.findFirst (top-level).
+      test-findFirst-match = {
+        expr = p.findFirst (x: x > 1) 0 xs;
+        expected = lib.findFirst (x: x > 1) 0 xs;
+      };
+      test-findFirst-nomatch = {
+        expr = p.findFirst (x: x > 9) (-1) xs;
+        expected = lib.findFirst (x: x > 9) (-1) xs;
+      };
+      test-findFirst-empty = {
+        expr = p.findFirst (x: true) 0 [ ];
+        expected = lib.findFirst (x: true) 0 [ ];
+      };
+      # indexOf — cross-checked against lib.lists.findFirstIndex (present in the pinned
+      # nixpkgs, lib/lists.nix:575; NOT top-level lib.findFirstIndex, which does not resolve).
+      test-indexOf-fidelity = {
+        expr = p.indexOf xs 2;
+        expected = lib.lists.findFirstIndex (y: y == 2) (-1) xs;
+      };
+      test-indexOf-absent-fidelity = {
+        expr = p.indexOf xs 99;
+        expected = lib.lists.findFirstIndex (y: y == 99) (-1) xs;
       };
     };
   };
