@@ -443,28 +443,14 @@ in
         ];
       };
 
-      test-groupBy = {
-        expr = p.groupBy (n: if n > 2 then "big" else "small") xs;
-        expected = lib.groupBy (n: if n > 2 then "big" else "small") xs;
-      };
-      test-groupBy-empty = {
-        expr = p.groupBy (n: toString n) [ ];
-        expected = lib.groupBy (n: toString n) [ ];
-      };
-      test-groupBy-collision = {
-        expr = p.groupBy (s: builtins.substring 0 1 s) [
-          "art"
-          "ale"
-          "banana"
-          "arc"
-        ];
-        expected = lib.groupBy (s: builtins.substring 0 1 s) [
-          "art"
-          "ale"
-          "banana"
-          "arc"
-        ];
-      };
+      # groupBy has NO fidelity arm, by the same rule that gives `map` and `filter` none: it is a
+      # builtins alias, not a vendored utility, so there is no second implementation for fidelity to
+      # compare. Retired rather than left in place because nixpkgs `lib/lists.nix` defines
+      # `groupBy = builtins.groupBy or (…)` and this Nix has the primop — so `expected = lib.groupBy …`
+      # against a delegating `p.groupBy` compares the primop with itself and cannot fail. A check that
+      # cannot fail must not be counted as coverage. groupBy's behaviour is pinned instead by the
+      # literal-expectation tests in the `prelude` suite above (partition, the empty case, and
+      # within-group collision order), each verified to fail under a broken groupBy.
 
       # findFirst — behavior-identical to nixpkgs lib.findFirst (top-level).
       test-findFirst-match = {

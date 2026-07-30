@@ -23,6 +23,7 @@ let
     foldl'
     functionArgs
     genList
+    groupBy
     head
     isAttrs
     isFunction
@@ -191,6 +192,12 @@ in
     foldl'
     functionArgs
     genList
+    # groupBy partitions by string key and keeps input order within each group. It is a primop, so
+    # this is an alias and not a vendored utility: the fold this replaces rebuilt
+    # `(acc.${key} or [ ]) ++ [ x ]` at every step, copying the whole group each time (quadratic in
+    # group size) and re-copying the accumulator attrset with `//`. The key domain is unchanged —
+    # the fold used the key as an attribute name, so both forms abort alike on a non-string.
+    groupBy
     head
     isAttrs
     isFunction
@@ -264,15 +271,6 @@ in
       ) (attrNames a)
     );
   mapAttrsToList = f: a: map (n: f n a.${n}) (attrNames a);
-  groupBy =
-    keyOf: xs:
-    foldl' (
-      acc: x:
-      let
-        key = keyOf x;
-      in
-      acc // { ${key} = (acc.${key} or [ ]) ++ [ x ]; }
-    ) { } xs;
   concatMapStringsSep =
     sep: f: xs:
     concatStringsSep sep (map f xs);

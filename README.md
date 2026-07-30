@@ -139,7 +139,9 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
 - `filterAttrs pred attrs` — attrset keeping entries where `pred name value`.
 - `mapAttrsToList f attrs` — list of `f name value` over the attrset.
 - `groupBy keyOf xs` — attrset grouping each element of `xs` under the string key
-  `keyOf x`; each value is the list of elements sharing that key, in input order.
+  `keyOf x`; each value is the list of elements sharing that key, in input order. A
+  `builtins` re-export, not a vendored copy: the primop is linear where an accumulating
+  fold rebuilds each group at every step.
 - `concatMapStringsSep sep f xs` — `map f xs` joined by `sep`.
 - `hasPrefix pre s` — whether `s` starts with `pre`.
 - `imap0 f xs` — `map` with a 0-based index: `f index element`.
@@ -175,19 +177,21 @@ cd ci && nix flake check
 
 The `ci/` directory is a separate flake (it pulls nixpkgs only to supply the `lib`
 oracle the fidelity suite compares against — the lib itself pulls nothing). It runs
-**66 tests across 2 suites**:
+**63 tests across 2 suites**:
 
 - **`prelude`** (19) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
   `filterAttrs`, `fix`, `toposort` result + cycle, empty-list throw, `groupBy` basic +
   empty + collision-order stability, plus the gen-prelude-originals `dedupByKey`
   first-occurrence + null-keep + empty, `indexOf` present/absent/first, and `findFirst`
   match/default).
-- **`prelude-fidelity`** (47) — the load-bearing guard: for every nixpkgs-vendored
+- **`prelude-fidelity`** (44) — the load-bearing guard: for every nixpkgs-vendored
   utility, `prelude.X input == lib.X input` over normal and boundary inputs (empty lists,
   absent prefixes, reversed ranges, cycles). This is what keeps the vendored copies
   byte-behavior-identical to nixpkgs `lib`. (`indexOf` is additionally cross-checked
   against `lib.lists.findFirstIndex`; `dedupByKey` has no nixpkgs oracle and lives only in
-  the `prelude` suite.)
+  the `prelude` suite. `groupBy` has no arm here either — it is a `builtins` re-export, and
+  nixpkgs' own `lib.groupBy` is `builtins.groupBy or (…)`, so a fidelity arm over it would
+  compare the primop with itself.)
 
 There is no separate `purity` suite because purity is structural: the lib flake declares
 no inputs, so there is no `nixpkgs.lib` in scope to accidentally depend on.
@@ -200,7 +204,7 @@ behavior-identically from `nixpkgs` `lib`:
 
 | Utility | nixpkgs source |
 |---------|----------------|
-| `genAttrs`, `filterAttrs`, `mapAttrsToList`, `groupBy`, `nameValuePair`, `optionalAttrs` | `lib/attrsets.nix` |
+| `genAttrs`, `filterAttrs`, `mapAttrsToList`, `nameValuePair`, `optionalAttrs` | `lib/attrsets.nix` |
 | `optional`, `last`, `init`, `unique`, `imap0`, `range`, `toposort` (+ `listDfs`), `findFirst` | `lib/lists.nix` |
 | `optionalString`, `concatMapStringsSep`, `hasPrefix`, `removePrefix` | `lib/strings.nix` |
 | `fix`, `max` | `lib/trivial.nix` / `lib/fixed-points.nix` |
