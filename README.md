@@ -4,7 +4,7 @@
 
 The small pure-utility dependency that lets the pure gen substrate drop `nixpkgs.lib`.
 It is `builtins` re-exports plus the handful of pure utilities (`genAttrs`, `unique`,
-`filterAttrs`, `fix`, `optional`, `toposort`, …) the substrate uses, vendored
+`filterAttrs`, `fix`, `optional`, `sort`, …) the substrate uses, vendored
 behavior-identically from nixpkgs `lib`.
 
 **Not** a type system, **not** a module-system shim — only general pure utilities. The
@@ -38,11 +38,9 @@ member:
   `foldl'`, `genList`, `partition`, …), grouped under one name so consumers need not
   reach into `builtins` themselves.
 - **Vendored pure utilities** — the small set of `nixpkgs.lib` helpers the gen substrate
-  actually uses (`genAttrs`, `filterAttrs`, `unique`, `fix`, `toposort`, …), copied here
+  actually uses (`genAttrs`, `filterAttrs`, `unique`, `fix`, …), copied here
   so the pure gen libraries can depend on gen-prelude instead of `nixpkgs.lib`. Each is
-  behavior-identical to its `lib.*` original; `toposort` (with its `listDfs` / list-
-  reverse helpers) is copied verbatim so its `{ result } | { cycle; loops }` contract
-  matches nixpkgs exactly.
+  behavior-identical to its `lib.*` original.
 
 The mental model: wherever a pure gen lib would have written `lib.X`, it writes
 `prelude.X` instead and gets identical semantics with no `nixpkgs.lib` in its closure.
@@ -149,11 +147,19 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
 - `max a b` — the larger of two comparables.
 - `range from to` — inclusive integer range (`[ ]` when `from > to`).
 - `removePrefix pre s` — `s` with a leading `pre` stripped (unchanged if absent).
-- `toposort before list` — partial-order topological sort. Returns `{ result = sorted; }`
-  or, on a cycle, `{ cycle; loops; }` — identical to `nixpkgs lib.toposort`. Copied
-  verbatim (with its internal `listDfs` / list-reverse helpers) so the contract matches
-  nixpkgs exactly; consumers such as gen-graph's `phaseOrder` and gen-vars rely on the
-  `? result` discriminant.
+
+### Retired: `toposort`
+
+`toposort` used to live here, vendored verbatim from `nixpkgs lib/lists.nix` along with its
+internal `listDfs` and list-reverse helpers. It is gone. Ordering has one owner in the gen
+ecosystem and it is [gen-graph](https://github.com/sini/gen-graph): use `gen-graph.topoOrder`,
+which is Kahn 1962 over an accessor and returns `{ ok = true; order; }` or
+`{ ok = false; cycles; }` rather than `{ result }` / `{ cycle; loops; }`.
+
+Two guarantees went with the copy and are not reproduced anywhere: **byte-compatibility with
+`nixpkgs lib.toposort`**, and the **polymorphism** that let it order integers and attrset
+records directly. gen-graph's accessor is string-keyed; non-string nodes reach it through an
+explicit `keyOf` projection. `sort` — the primitive comparator sort — stays here.
 
 ### gen-prelude-original (no nixpkgs equivalent)
 
@@ -177,14 +183,14 @@ cd ci && nix flake check
 
 The `ci/` directory is a separate flake (it pulls nixpkgs only to supply the `lib`
 oracle the fidelity suite compares against — the lib itself pulls nothing). It runs
-**63 tests across 2 suites**:
+**58 tests across 2 suites**:
 
 - **`prelude`** (19) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
-  `filterAttrs`, `fix`, `toposort` result + cycle, empty-list throw, `groupBy` basic +
+  `filterAttrs`, `fix`, the `toposort` retirement + its `sort` control, empty-list throw, `groupBy` basic +
   empty + collision-order stability, plus the gen-prelude-originals `dedupByKey`
   first-occurrence + null-keep + empty, `indexOf` present/absent/first, and `findFirst`
   match/default).
-- **`prelude-fidelity`** (44) — the load-bearing guard: for every nixpkgs-vendored
+- **`prelude-fidelity`** (39) — the load-bearing guard: for every nixpkgs-vendored
   utility, `prelude.X input == lib.X input` over normal and boundary inputs (empty lists,
   absent prefixes, reversed ranges, cycles). This is what keeps the vendored copies
   byte-behavior-identical to nixpkgs `lib`. (`indexOf` is additionally cross-checked
@@ -205,12 +211,11 @@ behavior-identically from `nixpkgs` `lib`:
 | Utility | nixpkgs source |
 |---------|----------------|
 | `genAttrs`, `filterAttrs`, `mapAttrsToList`, `nameValuePair`, `optionalAttrs` | `lib/attrsets.nix` |
-| `optional`, `last`, `init`, `unique`, `imap0`, `range`, `toposort` (+ `listDfs`), `findFirst` | `lib/lists.nix` |
+| `optional`, `last`, `init`, `unique`, `imap0`, `range`, `findFirst` | `lib/lists.nix` |
 | `optionalString`, `concatMapStringsSep`, `hasPrefix`, `removePrefix` | `lib/strings.nix` |
 | `fix`, `max` | `lib/trivial.nix` / `lib/fixed-points.nix` |
 
-`toposort` is copied verbatim so its `{ result } | { cycle; loops }` contract matches
-nixpkgs exactly. The `prelude-fidelity` test suite asserts each utility stays
+The `prelude-fidelity` test suite asserts each utility stays
 behavior-identical to its `nixpkgs.lib` original, so the vendoring cannot silently
 drift.
 

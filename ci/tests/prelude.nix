@@ -24,9 +24,6 @@ let
   gt1 = _n: v: v > 1;
   showKV = n: v: "${n}=${toString v}";
   idxShow = i: x: "${toString i}:${toString x}";
-  # toposort comparators: asc = linear order; cyc = a mutual 1↔2 cycle.
-  asc = a: b: a < b;
-  cyc = a: b: (a == 1 && b == 2) || (a == 2 && b == 1);
 in
 {
   flake.tests = {
@@ -61,26 +58,19 @@ in
           })).b;
         expected = 2;
       };
-      # toposort (vendored verbatim): linear order sorts ascending; cycles report `cycle`.
-      test-toposort-result = {
-        expr =
-          (p.toposort (a: b: a < b) [
-            3
-            1
-            2
-          ]).result;
-        expected = [
-          1
-          2
-          3
-        ];
+      # `toposort` is retired: ordering has one owner, and it is gen-graph. The two cases
+      # that stood here (`test-toposort-result`, `test-toposort-cycle-detected`) are
+      # replaced by `order-front-door.test-topo-total-order` and
+      # `order-front-door.test-topo-cycle-discriminated` in gen-graph's suite.
+      test-toposort-not-exported = {
+        expr = p ? toposort;
+        expected = false;
       };
-      test-toposort-cycle-detected = {
-        expr =
-          (p.toposort (a: b: (a == 1 && b == 2) || (a == 2 && b == 1)) [
-            1
-            2
-          ]) ? cycle;
+      # Control on the same predicate in the same run: `sort`, the primitive comparator
+      # sort this library DOES keep, is still exported — so the absence above is a finding
+      # and not a probe that could not have matched.
+      test-sort-still-exported = {
+        expr = p ? sort;
         expected = true;
       };
       test-last-empty-throws = {
@@ -394,54 +384,17 @@ in
         expected = lib.removePrefix "xy" "abcd";
       };
 
-      # toposort — vendored verbatim; must match nixpkgs' { result } | { cycle; loops }.
-      # asc = "a must come before b iff a < b" (a linear partial order).
-      test-toposort-chain = {
-        expr = p.toposort asc [
-          3
-          1
-          2
-        ];
-        expected = lib.toposort asc [
-          3
-          1
-          2
-        ];
-      };
-      test-toposort-dag = {
-        expr = p.toposort asc [
-          5
-          2
-          8
-          1
-          3
-        ];
-        expected = lib.toposort asc [
-          5
-          2
-          8
-          1
-          3
-        ];
-      };
-      test-toposort-single = {
-        expr = p.toposort asc [ 7 ];
-        expected = lib.toposort asc [ 7 ];
-      };
-      test-toposort-empty = {
-        expr = p.toposort asc [ ];
-        expected = lib.toposort asc [ ];
-      };
-      test-toposort-cycle = {
-        expr = p.toposort cyc [
-          1
-          2
-        ];
-        expected = lib.toposort cyc [
-          1
-          2
-        ];
-      };
+      # toposort has NO fidelity arm because it is no longer here. Five cases stood in
+      # this section — `test-toposort-{chain,dag,single,empty,cycle}` — and every one of
+      # them asserted byte-equality with nixpkgs `lib.toposort`, which is the whole reason
+      # the function was vendored verbatim. Retiring the copy retires the claim: there is
+      # no second implementation left for fidelity to compare. Replacements in gen-graph's
+      # `order-front-door` suite carry the ORDERING and CYCLE-REPORTING behaviour forward
+      # (`test-topo-chain`, `test-topo-dag`, `test-topo-single`, `test-topo-empty`,
+      # `test-topo-cycle-members`) — but NOT byte-compatibility with nixpkgs, and not the
+      # polymorphism that let the vendored copy sort integers and records directly. Those
+      # two guarantees are deleted, not relocated; gen-graph's door reaches integer and
+      # record nodes only through an explicit `keyOf` projection.
 
       # groupBy has NO fidelity arm, by the same rule that gives `map` and `filter` none: it is a
       # builtins alias, not a vendored utility, so there is no second implementation for fidelity to

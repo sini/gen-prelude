@@ -74,67 +74,6 @@ let
 
   hasInfix = infix: content: infix == "" || length (split (escapeRegex infix) content) > 1;
 
-  # ── toposort (vendored verbatim from nixpkgs lib/lists.nix) ──
-  # toposort + its internal helpers listDfs/reverseList, copied byte-for-byte so the
-  # `{ result } | { cycle; loops }` contract matches nixpkgs exactly (consumers like
-  # gen-derive's dag and gen-vars depend on `? result`). Only `toposort` is exported.
-  reverseList =
-    xs:
-    let
-      l = length xs;
-    in
-    genList (n: elemAt xs (l - n - 1)) l;
-
-  listDfs =
-    stopOnCycles: before: list:
-    let
-      dfs' =
-        us: visited: rest:
-        let
-          c = filter (x: before x us) visited;
-          b = partition (x: before x us) rest;
-        in
-        if stopOnCycles && (length c > 0) then
-          {
-            cycle = us;
-            loops = c;
-            inherit visited rest;
-          }
-        else if length b.right == 0 then
-          # nothing is before us
-          {
-            minimal = us;
-            inherit visited rest;
-          }
-        else
-          # grab the first one before us and continue
-          dfs' (head b.right) ([ us ] ++ visited) (tail b.right ++ b.wrong);
-    in
-    dfs' (head list) [ ] (tail list);
-
-  toposort =
-    before: list:
-    let
-      dfsthis = listDfs true before list;
-      toporest = toposort before (dfsthis.visited ++ dfsthis.rest);
-    in
-    if length list < 2 then
-      # finish
-      { result = list; }
-    else if dfsthis ? cycle then
-      # there's a cycle, starting from the current vertex, return it
-      {
-        cycle = reverseList ([ dfsthis.cycle ] ++ dfsthis.visited);
-        inherit (dfsthis) loops;
-      }
-    else if toporest ? cycle then
-      # there's a cycle somewhere else in the graph, return it
-      toporest
-    # Slow, but short. Can be made a bit faster with an explicit stack.
-    else
-      # there are no cycles
-      { result = [ dfsthis.minimal ] ++ toporest.result; };
-
   # ── first-match search (findFirstIndex vendored from nixpkgs lib/lists.nix) ──
   # findFirstIndex: stack-safe first-matching-index scan (nixpkgs' countdown-foldl' trick —
   # reuses one stack frame, no naive recursion, no early cutoff). Internal: the shared scan
@@ -274,6 +213,11 @@ in
   concatMapStringsSep =
     sep: f: xs:
     concatStringsSep sep (map f xs);
+  # Ordering is gen-graph's concern, not this library's: `sort` is the primitive
+  # comparator sort and stops there. The vendored nixpkgs `toposort` (with its `listDfs`
+  # and list-reverse helpers) that used to sit here is retired — topological ordering now
+  # has one owner, `gen-graph.topoOrder`, which is Kahn 1962 over an accessor rather than
+  # this depth-first scan.
   hasPrefix = pre: s: substring 0 (stringLength pre) s == pre;
   # Drop-in for nixpkgs lib.hasInfix / lib.escapeRegex, but linear (no `.*` backtracking).
   inherit hasInfix escapeRegex;
@@ -292,8 +236,4 @@ in
       n = stringLength pre;
     in
     if substring 0 n s == pre then substring n (stringLength s - n) s else s;
-
-  # Partial-order topological sort (vendored above in the let block). Returns
-  # `{ result = sorted; }` or `{ cycle; loops; }` — identical to nixpkgs lib.toposort.
-  inherit toposort;
 }

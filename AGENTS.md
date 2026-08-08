@@ -17,7 +17,7 @@ gen-prelude holds general pure utilities only. Everything below is a *domain* co
 | Typed registries, kinds, instances, refs, identity minting | `gen-schema` — "gen-schema: typed record registry with extension points for the pure-gen module system" |
 | Aspect traits, classification, composition | `gen-aspects` — "gen-aspects: aspect-oriented composition types (pure-gen, re-hosted on gen-merge)" |
 | Scope-graph evaluation, memoized and circular attributes | `gen-scope` — "gen-scope: demand-driven attribute grammar evaluator over algebraic scope graphs" |
-| Graph traversal, condensation, `phaseOrder` | `gen-graph` — "gen-graph: accessor-based graph query combinators". Consumes `toposort` from here rather than defining its own |
+| Graph traversal, condensation, `phaseOrder`, **topological ordering of any kind** | `gen-graph` — "gen-graph: accessor-based graph query combinators". `gen-graph.topoOrder` is the one ordering front door; this library keeps `sort` (primitive comparator sort) and nothing above it |
 | Predicate matching over graph positions | `gen-select` — "gen-select: selector algebra for attributed graph positions" |
 | Rule dispatch, ordering, conflict resolution | `gen-dispatch` — "gen-dispatch: relational rule dispatch over ordered groups (the dispatch STEP)" |
 | Demand-driven attribute schedules, convergence loops | `gen-resolve` — "gen-resolve — demand-driven higher-order RAG evaluator over algebraic scope graphs (Knuth 1968 attribute schedule + Vogt 1989 HOAG)" |
@@ -69,7 +69,6 @@ substring  tail
 | `hasPrefix` / `removePrefix` | `string -> string -> bool` / `string -> string -> string` |
 | `hasInfix` | `string -> string -> bool` — drop-in for `lib.hasInfix`, **reimplemented** (split-based, linear); not a verbatim copy |
 | `escapeRegex` | `string -> string` — drop-in for `lib.escapeRegex`; metachar set copied verbatim, implementation is `replaceStrings` |
-| `toposort` | `(a -> a -> bool) -> [a] -> { result = [a]; } \| { cycle = [a]; loops = [a]; }` — copied **verbatim** (with its `listDfs` / list-reverse helpers) so the discriminant matches nixpkgs exactly |
 
 **gen-prelude originals** (no `nixpkgs.lib` counterpart; covered by the literal-expectation `prelude` suite, not `prelude-fidelity`).
 
@@ -88,7 +87,7 @@ substring  tail
 | Substitute for a `lib.X` call in a pure gen lib | `prelude.X` — identical semantics, no `nixpkgs.lib` in the closure |
 | Substring test over a large string (source files, readFile'd libs) | `hasInfix` — the reason it exists; `lib.hasInfix` overflows the C stack here |
 | Escape a literal for use in a regex | `escapeRegex` |
-| Order a partial order / detect a cycle | `toposort`; discriminate on `? result` |
+| Order a partial order / detect a cycle | NOT HERE — `gen-graph.topoOrder`; discriminate on `.ok` |
 | Deduplicate a list by identity | `unique` (structural `==`) |
 | Deduplicate by a derived key, keeping keyless elements | `dedupByKey` |
 | Find an element or its position | `findFirst pred default list` / `indexOf list x` — note the opposite argument orders |
@@ -104,7 +103,7 @@ Each row verified in this run. Shared fixtures: `p = import ./lib`; `ok e = (bui
 | Trap | Evidence |
 |---|---|
 | **`dedupByKey` overflows the stack** — it is naive non-tail recursion (`[ x ] ++ go …`, `lib/default.nix:159-177`), unlike the `foldl'`-based scans | `n=1000/2000/5000` ⇒ `1000/2000/5000`; `n=10000` ⇒ `error: stack overflow; max-call-depth exceeded`. Positive control, same fixture and sizes: `indexOf (mk n) …` ⇒ `999/1999/4999/9999`, no overflow at `n=10000` |
-| **`toposort` is quadratic** (nixpkgs' own `lib/lists.nix` comment, carried verbatim at `lib/default.nix:133`, reads "Slow, but short") | Descending input, wall clock incl. `nix` startup: `n=500` 110 ms, `n=1000` 327 ms, `n=2000` 1201 ms — ~4× per doubling. Control, same harness and fixture: `p.sort` ⇒ 29/28/28 ms |
+| **`toposort` was quadratic, and is now retired** — the reading that motivated moving ordering to gen-graph | Descending input, wall clock incl. `nix` startup: `n=500` 110 ms, `n=1000` 327 ms, `n=2000` 1201 ms — ~4× per doubling. Control, same harness and fixture: `p.sort` ⇒ 29/28/28 ms. Re-measured on the same fixture before removal: 0.11/0.34/1.25 s, control 0.02 s flat |
 | **A non-string, non-`null` `dedupByKey` key is an error `tryEval` does not catch** — it is an interpreter type error at the dynamic-attr site, not a `throw` | `ok (p.dedupByKey (n: n.k) [ { k = 1; } { k = 1; } ])` ⇒ the whole eval aborts with `error: expected a string but found an integer: 1` at `lib/default.nix:172:36`. Controls: `ok` over the same call with `k = "1"` ⇒ `true`; `ok (p.last [ ])` ⇒ `false`, i.e. `tryEval` *does* catch this lib's explicit `throw`s |
 | **`indexOf` takes the list first**, opposite to `findFirst pred default list`. Swapping is likewise uncatchable | `p.indexOf [ "a" "b" "c" ] "b"` ⇒ `1`; `ok (p.indexOf "b" [ "a" "b" ])` ⇒ eval aborts, `error: expected a list but found a string: "b"`. Test: `test-indexOf-first` (`ci/tests/prelude.nix`) |
 | **`hasInfix "" s` is unconditionally `true`**, empty haystack included — the `infix == ""` short-circuit fires before any scan (`lib/default.nix:75`) | `p.hasInfix "" ""` ⇒ `true`, `p.hasInfix "" "abc"` ⇒ `true` |
@@ -112,22 +111,22 @@ Each row verified in this run. Shared fixtures: `p = import ./lib`; `ok e = (bui
 | Needle metacharacters are literal (`escapeRegex` runs first) | `p.hasInfix "a.c" "abc"` ⇒ `false`. Tests: `test-hasInfix-metachars`, `test-hasInfix-metachars-nomatch` |
 | `escapeRegex` escapes `{` but **not** `}`, and not `-` — the metachar set is nixpkgs' verbatim, so a needle is only regex-safe to the same degree nixpkgs makes it | `p.escapeRegex "a{b}c"` ⇒ `"a\\{b}c"`; `p.escapeRegex "a-b"` ⇒ `"a-b"`. Test: `test-escapeRegex` |
 | `last`/`init` on `[ ]` throw with a **gen-prelude-specific message**, not nixpkgs' text (fidelity is over values, not error strings) | `ok (p.last [ ])` and `ok (p.init [ ])` ⇒ `false`; message: `error: gen-prelude.last: list must not be empty`. Control: `p.last [ 1 2 3 ]` ⇒ `3`. Test: `test-last-empty-throws` |
-| `toposort` on a cycle returns **no `result` attr at all** — consumers must discriminate, not index | cycle case ⇒ `attrNames` `["cycle","loops"]`, `? result` ⇒ `false`; acyclic ⇒ `["result"]`. Test: `test-toposort-cycle-detected` |
+| `toposort` is **gone**, and its absence is asserted rather than assumed | `p ? toposort` ⇒ `false`. Control on the same predicate in the same run: `p ? sort` ⇒ `true`. Tests: `test-toposort-not-exported`, `test-sort-still-exported` |
 | `findFirst` has no early cutoff — the `foldl'` walks every index — but it does **not force** elements past the match | `p.findFirst (x: x == 1) 0 [ 1 (throw "boom") ]` ⇒ `1`, `ok …` ⇒ `true`. `p.findFirst (_: true) "DEF" [ ]` ⇒ `"DEF"` |
 | `unique` compares structurally, so distinct attrsets with equal contents collapse | `p.unique [ { a = 1; } { a = 1; } { a = 2; } ]` ⇒ `[ { a = 1; } { a = 2; } ]` |
 | `groupBy` is the **primop alias**, not a vendored copy, and so carries no `prelude-fidelity` arm by design (`ci/tests/prelude.nix:446-453`) | `p.groupBy (s: substring 0 1 s) [ "art" "ale" "bar" ]` ⇒ `{ a = [ "art" "ale" ]; b = [ "bar" ]; }`, equal to `builtins.groupBy` on the same input. Identity cannot be shown by `==`: Nix function equality is always false — controls `builtins.groupBy == builtins.groupBy` ⇒ `false` and `let f = x: x; in f == f` ⇒ `false` |
 | `max` is `a > b`, so it works on any comparable, strings included | `p.max "a" "b"` ⇒ `"b"` |
 | The lib is a **value**, not a function — there is no `gen-prelude { inherit lib; }` call | `builtins.isFunction (import ./lib)` ⇒ `false`, `builtins.isAttrs` ⇒ `true` |
 | `README.md`'s API Reference documents neither `hasInfix` nor `escapeRegex`, though both are top-level exports covered by the fidelity suite | `grep -n 'hasInfix\|escapeRegex\|groupBy' README.md` returns only `groupBy` lines (141, 183, 192, 193) — `groupBy` is the positive control for the same pattern in the same run |
-| `replaceStrings` and `split` are **not** re-exported, though the lib uses both internally | `p ? split` and `p ? replaceStrings` ⇒ `false`; control on the same predicate, same run: `genAttrs`/`unique`/`hasInfix`/`escapeRegex`/`toposort`/`dedupByKey`/`indexOf` all ⇒ `true` |
+| `replaceStrings` and `split` are **not** re-exported, though the lib uses both internally | `p ? split` and `p ? replaceStrings` ⇒ `false`; control on the same predicate, same run: `genAttrs`/`unique`/`hasInfix`/`escapeRegex`/`sort`/`dedupByKey`/`indexOf` all ⇒ `true` |
 | No suffix, split, path or deep-merge helper exists anywhere in the lib | `hasSuffix`, `removeSuffix`, `splitString`, `concatStrings`, `recursiveUpdate`, `flatten`, `attrByPath`, `zipAttrsWith`, `mapAttrs'`, `min`, `take`, `drop`, `subtractLists`, `intersectLists`, `reverseList`, `findFirstIndex`, `id`, `pipe`, `trace`, `deepSeq`, `sortOn`, `stringToCharacters`, `types`, `mkOption`, `evalModules`, `mkIf`, `mkMerge`, `mkDefault` — all ⇒ absent (49-name probe, 0 present, against the 7-name positive control above) |
-| Four of those names occur in **no** `gen-*/lib` tree at all | `grep -rlE '\b<name>\b' gen-*/lib gen/lib` from `~/Documents/repos/sini` ⇒ `<none>` for `hasSuffix`, `removeSuffix`, `zipAttrsWith`, `concatStrings`. Control, same sweep: `genAttrs` 22 files, `toposort` 8, `mkIntensional` 3 |
+| Four of those names occur in **no** `gen-*/lib` tree at all | `grep -rlE '\b<name>\b' gen-*/lib gen/lib` from `~/Documents/repos/sini` ⇒ `<none>` for `hasSuffix`, `removeSuffix`, `zipAttrsWith`, `concatStrings`. Control, same sweep: `genAttrs` 23 files, `toposort` 6 (all comments and gen-edge's own implementation — no call to this library remains), `mkIntensional` 3 |
 
 ## Theory
 
 **None claimed.** `README.md`'s own section is *Provenance*, not a research lineage: "gen-prelude has no research lineage — it is plumbing." The repo's claim structure is origin attribution plus a fidelity guarantee.
 
-**Origins** (README's Provenance table): `genAttrs`, `filterAttrs`, `mapAttrsToList`, `nameValuePair`, `optionalAttrs` ← nixpkgs `lib/attrsets.nix`; `optional`, `last`, `init`, `unique`, `imap0`, `range`, `toposort` (+ `listDfs`), `findFirst` ← `lib/lists.nix`; `optionalString`, `concatMapStringsSep`, `hasPrefix`, `removePrefix` ← `lib/strings.nix`; `fix`, `max` ← `lib/trivial.nix` / `lib/fixed-points.nix`. `dedupByKey` ← den-hoag `lib/dedup-by-key.nix`; `indexOf` is gen-prelude-original.
+**Origins** (README's Provenance table): `genAttrs`, `filterAttrs`, `mapAttrsToList`, `nameValuePair`, `optionalAttrs` ← nixpkgs `lib/attrsets.nix`; `optional`, `last`, `init`, `unique`, `imap0`, `range`, `findFirst` ← `lib/lists.nix`; `optionalString`, `concatMapStringsSep`, `hasPrefix`, `removePrefix` ← `lib/strings.nix`; `fix`, `max` ← `lib/trivial.nix` / `lib/fixed-points.nix`. `dedupByKey` ← den-hoag `lib/dedup-by-key.nix`; `indexOf` is gen-prelude-original.
 
 **Checked invariant**: purity is *structural*, not test-enforced — the flake declares no inputs, so no `nixpkgs.lib` is in scope to depend on (`flake.nix:4-6`, `README.md:196-197`). There is no `purity` suite here, unlike sibling libs. What the tests do guard is fidelity: `prelude-fidelity` asserts `prelude.X input == lib.X input` for every vendored utility over normal and boundary inputs, against the nixpkgs `lib` oracle that `ci/` pulls in for that purpose (`ci/flake.nix:2-5`).
 
@@ -142,7 +141,7 @@ The namespace is flat, so this one call is the whole contract — every name the
 Current output (verbatim):
 
 ```json
-["all","any","attrNames","attrValues","concatLists","concatMap","concatMapStringsSep","concatStringsSep","dedupByKey","elem","elemAt","escapeRegex","filter","filterAttrs","findFirst","fix","foldl'","functionArgs","genAttrs","genList","groupBy","hasInfix","hasPrefix","head","imap0","indexOf","init","isAttrs","isFunction","isList","last","length","listToAttrs","map","mapAttrs","mapAttrsToList","match","max","nameValuePair","optional","optionalAttrs","optionalString","partition","range","removePrefix","sort","stringLength","substring","tail","toposort","unique"]
+["all","any","attrNames","attrValues","concatLists","concatMap","concatMapStringsSep","concatStringsSep","dedupByKey","elem","elemAt","escapeRegex","filter","filterAttrs","findFirst","fix","foldl'","functionArgs","genAttrs","genList","groupBy","hasInfix","hasPrefix","head","imap0","indexOf","init","isAttrs","isFunction","isList","last","length","listToAttrs","map","mapAttrs","mapAttrsToList","match","max","nameValuePair","optional","optionalAttrs","optionalString","partition","range","removePrefix","sort","stringLength","substring","tail","unique"]
 ```
 
 The command observes export *names* only; signatures, trap rows and `file:line` refs rot without changing it.
