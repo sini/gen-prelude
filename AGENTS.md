@@ -31,14 +31,14 @@ gen-prelude holds general pure utilities only. Everything below is a *domain* co
 | Incremental rebuild, change propagation, AFFECTED set | `gen-rebuild` — "gen-rebuild: pure-Nix incremental rebuilder core (Mokhov rebuilder dimension)" |
 | Variable / secret generation | `gen-vars` — "gen-vars: scope-driven, multi-target variable generation" |
 | The nixpkgs boundary; building NixOS systems; value injection | `gen-flake` — "gen-flake — the pure composition boundary of the pure-gen module ecosystem" |
-| Ecosystem wiring / two-stage lib instantiation | `gen` (hub) — `gen/flake.nix` carries **no** `description` field; the roster is `gen/lib/mkGenLibs.nix`, which binds this lib as `prelude` (`mkGenLibs.nix:11`) |
+| Ecosystem wiring / two-stage lib instantiation | `gen` (hub) — `gen/flake.nix` carries **no** `description` field; the roster is `gen/lib/mkGenLibs.nix`, which binds this lib as `prelude` (`gen/lib/mkGenLibs.nix:prelude`) |
 | `hasSuffix`, `removeSuffix`, `zipAttrsWith`, `concatStrings` | **No gen owner.** Absent from gen-prelude and named nowhere in any `gen-*/lib` tree (see traps). `recursiveUpdate` and `splitString` appear only as private `let` bindings inside `gen-algebra/lib/rec.nix`, `gen-merge/lib/modules.nix` and `gen-class/lib/apply.nix` — not exports |
 
 ## Exports
 
 Entry: `inputs.gen-prelude.lib` (flake). Root `default.nix` and `import ./lib` are the same bare value — **not** a function, so it takes no dependency argument. The flake declares zero inputs (`flake.nix:4-6`), so pulling gen-prelude in adds nothing to a consumer's lock. The namespace is **flat**: no export is itself an attrset.
 
-**`builtins` re-exports** — aliases, zero new code (`lib/default.nix:181-215`). Semantics are exactly those of the corresponding `builtins.*`.
+**`builtins` re-exports** — aliases, zero new code (`lib/default.nix` § *builtins re-exports*, the `inherit` block in the exported attrset). Semantics are exactly those of the corresponding `builtins.*`. Note the let-block `inherit (builtins)` is wider than this list: `replaceStrings` and `split` are pulled in for `escapeRegex` / `hasInfix` and deliberately **not** re-exported.
 
 ```
 all  any  attrNames  attrValues  concatLists  concatMap  concatStringsSep  elem
@@ -47,7 +47,7 @@ isList  length  listToAttrs  map  mapAttrs  match  partition  sort  stringLength
 substring  tail
 ```
 
-**Vendored `nixpkgs.lib` utilities** — `lib/default.nix:217-298`. Held behaviour-identical to `lib.*` by the `prelude-fidelity` suite.
+**Vendored `nixpkgs.lib` utilities** — `lib/default.nix` § *vendored pure utilities*. Held behaviour-identical to `lib.*` by the `prelude-fidelity` suite.
 
 | Export | Signature |
 |---|---|
@@ -102,7 +102,7 @@ Each row verified in this run. Shared fixtures: `p = import ./lib`; `ok e = (bui
 
 | Trap | Evidence |
 |---|---|
-| **`dedupByKey` overflows the stack** — it is naive non-tail recursion (`[ x ] ++ go …`, `lib/default.nix:159-177`), unlike the `foldl'`-based scans | `n=1000/2000/5000` ⇒ `1000/2000/5000`; `n=10000` ⇒ `error: stack overflow; max-call-depth exceeded`. Positive control, same fixture and sizes: `indexOf (mk n) …` ⇒ `999/1999/4999/9999`, no overflow at `n=10000` |
+| **`dedupByKey` overflows the stack** — it is naive non-tail recursion (`[ x ] ++ go …` in `lib/default.nix:dedupByKey`'s `go` helper), unlike the `foldl'`-based scans | `n=1000/2000/5000` ⇒ `1000/2000/5000`; `n=10000` ⇒ `error: stack overflow; max-call-depth exceeded`. Positive control, same fixture and sizes: `indexOf (mk n) …` ⇒ `999/1999/4999/9999`, no overflow at `n=10000` |
 | **`toposort` was quadratic, and is now retired** — the reading that motivated moving ordering to gen-graph | Descending input, wall clock incl. `nix` startup: `n=500` 110 ms, `n=1000` 327 ms, `n=2000` 1201 ms — ~4× per doubling. Control, same harness and fixture: `p.sort` ⇒ 29/28/28 ms. Re-measured on the same fixture before removal: 0.11/0.34/1.25 s, control 0.02 s flat |
 | **A non-string, non-`null` `dedupByKey` key is an error `tryEval` does not catch** — it is an interpreter type error at the dynamic-attr site, not a `throw` | `ok (p.dedupByKey (n: n.k) [ { k = 1; } { k = 1; } ])` ⇒ the whole eval aborts with `error: expected a string but found an integer: 1` at `lib/default.nix:172:36`. Controls: `ok` over the same call with `k = "1"` ⇒ `true`; `ok (p.last [ ])` ⇒ `false`, i.e. `tryEval` *does* catch this lib's explicit `throw`s |
 | **`indexOf` takes the list first**, opposite to `findFirst pred default list`. Swapping is likewise uncatchable | `p.indexOf [ "a" "b" "c" ] "b"` ⇒ `1`; `ok (p.indexOf "b" [ "a" "b" ])` ⇒ eval aborts, `error: expected a list but found a string: "b"`. Test: `test-indexOf-first` (`ci/tests/prelude.nix`) |
@@ -114,7 +114,7 @@ Each row verified in this run. Shared fixtures: `p = import ./lib`; `ok e = (bui
 | `toposort` is **gone**, and its absence is asserted rather than assumed | `p ? toposort` ⇒ `false`. Control on the same predicate in the same run: `p ? sort` ⇒ `true`. Tests: `test-toposort-not-exported`, `test-sort-still-exported` |
 | `findFirst` has no early cutoff — the `foldl'` walks every index — but it does **not force** elements past the match | `p.findFirst (x: x == 1) 0 [ 1 (throw "boom") ]` ⇒ `1`, `ok …` ⇒ `true`. `p.findFirst (_: true) "DEF" [ ]` ⇒ `"DEF"` |
 | `unique` compares structurally, so distinct attrsets with equal contents collapse | `p.unique [ { a = 1; } { a = 1; } { a = 2; } ]` ⇒ `[ { a = 1; } { a = 2; } ]` |
-| `groupBy` is the **primop alias**, not a vendored copy, and so carries no `prelude-fidelity` arm by design (`ci/tests/prelude.nix:446-453`) | `p.groupBy (s: substring 0 1 s) [ "art" "ale" "bar" ]` ⇒ `{ a = [ "art" "ale" ]; b = [ "bar" ]; }`, equal to `builtins.groupBy` on the same input. Identity cannot be shown by `==`: Nix function equality is always false — controls `builtins.groupBy == builtins.groupBy` ⇒ `false` and `let f = x: x; in f == f` ⇒ `false` |
+| `groupBy` is the **primop alias**, not a vendored copy, and so carries no `prelude-fidelity` arm by design (`ci/tests/prelude.nix`, the "groupBy has NO fidelity arm" note in the `prelude-fidelity` suite; behaviour pinned instead by `test-groupBy` / `test-groupBy-empty` / `test-groupBy-collision-order` in the `prelude` suite) | `p.groupBy (s: substring 0 1 s) [ "art" "ale" "bar" ]` ⇒ `{ a = [ "art" "ale" ]; b = [ "bar" ]; }`, equal to `builtins.groupBy` on the same input. Identity cannot be shown by `==`: Nix function equality is always false — controls `builtins.groupBy == builtins.groupBy` ⇒ `false` and `let f = x: x; in f == f` ⇒ `false` |
 | `max` is `a > b`, so it works on any comparable, strings included | `p.max "a" "b"` ⇒ `"b"` |
 | The lib is a **value**, not a function — there is no `gen-prelude { inherit lib; }` call | `builtins.isFunction (import ./lib)` ⇒ `false`, `builtins.isAttrs` ⇒ `true` |
 | `README.md`'s API Reference documents neither `hasInfix` nor `escapeRegex`, though both are top-level exports covered by the fidelity suite | `grep -n 'hasInfix\|escapeRegex\|groupBy' README.md` returns only `groupBy` lines (141, 183, 192, 193) — `groupBy` is the positive control for the same pattern in the same run |
