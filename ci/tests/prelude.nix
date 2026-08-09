@@ -22,6 +22,10 @@ let
     c = 3;
   };
   gt1 = _n: v: v > 1;
+  # An `iterateBounded` state whose loop-carried field throws when forced: the pair of cases
+  # below differ only in whether `strict` reaches it.
+  ranOverBoom =
+    strict: (builtins.tryEval (p.iterateBounded strict (st: st) { boom = throw "x"; } [ 1 ])).success;
   showKV = n: v: "${n}=${toString v}";
   idxShow = i: x: "${toString i}:${toString x}";
 in
@@ -228,6 +232,53 @@ in
           3
         ];
         expected = -1;
+      };
+
+      # iterateBounded: the bound's LENGTH is the iteration count and its elements are
+      # never read — the next case makes every element a `throw` to say so.
+      test-iterateBounded-counts = {
+        expr = p.iterateBounded (_: null) (st: st + 1) 0 [
+          "a"
+          "b"
+          "c"
+        ];
+        expected = 3;
+      };
+      test-iterateBounded-ignores-elements = {
+        expr = p.iterateBounded (_: null) (st: st + 1) 0 [
+          (throw "the bound's elements must never be forced")
+          (throw "nor this one")
+        ];
+        expected = 2;
+      };
+      test-iterateBounded-empty-bound = {
+        expr = p.iterateBounded (_: null) (st: st + 1) 7 [ ];
+        expected = 7;
+      };
+      # The caller's half of the contract: a step that is the identity once no work remains
+      # reaches the same fixed point a recursion would, and every surplus step idles.
+      test-iterateBounded-surplus-steps-idle = {
+        expr = p.iterateBounded (_: null) (st: if st >= 3 then st else st + 1) 0 (p.range 1 100);
+        expected = 3;
+      };
+      # `strict` is applied to every intermediate state and FORCED. The subject forces a
+      # field that throws; the control is the same loop with nothing forced, which returns
+      # because `foldl'` reaches only the record and not its fields.
+      test-iterateBounded-forces-carried = {
+        expr = ranOverBoom (st: st.boom);
+        expected = false;
+      };
+      test-iterateBounded-forces-carried-control = {
+        expr = ranOverBoom (_: null);
+        expected = true;
+      };
+      # Stack safety, the property the encoding exists for: 20000 iterations is twice the
+      # default `max-call-depth`, where a self-applying loop spends one frame per iteration.
+      # The failing arm is a SHELL arm and cannot live here — a stack overflow is an
+      # uncatchable abort, so no in-language assertion observes it.
+      test-iterateBounded-stack-safe = {
+        expr = p.iterateBounded (_: null) (st: st + 1) 0 (p.range 1 20000);
+        expected = 20000;
       };
     };
 

@@ -35,6 +35,7 @@ let
     match
     partition
     replaceStrings
+    seq
     sort
     split
     stringLength
@@ -87,6 +88,43 @@ let
       ) (-1) list;
     in
     if resultIndex < 0 then default else resultIndex;
+
+  # ── bounded iteration — the loop encoding for state that a scan cannot carry ──
+  # `iterateBounded strict step init bound` applies `step` once per element of `bound` and
+  # returns the state after the last application. The ELEMENTS OF `bound` ARE IGNORED: only
+  # its length is read, as the bound on how many steps can be productive, so a caller passes
+  # a list it already holds and the driver allocates nothing.
+  #
+  # THEORY: a loop written as a self-applying lambda costs one evaluator frame per iteration —
+  # Nix does not reuse the frame of a call in tail position — so its descent depth IS the
+  # iteration count, and past `max-call-depth` it aborts uncatchably (`tryEval` does not
+  # contain a stack overflow). `foldl'` is a C-level loop: each application returns before the
+  # next begins, so the frame cost is constant in the iteration count. This is the same
+  # stack-safety argument `findFirstIndex` above makes for a scan, extended to a loop that
+  # carries state — which is why the bound is a list rather than a count: it is the scan's
+  # driver, reused.
+  #
+  # Iterating a FIXED number of times where a recursion would run to its own fixed point is
+  # sound only if the caller owes two properties, and they are the contract:
+  #   (1) at most `length bound` steps do work, and
+  #   (2) `step` is the identity once no work remains,
+  # so the surplus steps idle and the result is the fixed point the recursion would reach.
+  #
+  # `strict` names the LOOP-CARRIED fields and is forced on every intermediate state.
+  # `foldl'` forces its accumulator to WHNF — for a record, the record and not its fields — so
+  # a field left unforced accumulates a thunk chain as long as the loop, and forcing it at the
+  # end costs C stack: a second, distinct stack overflow that no `max-call-depth` setting
+  # bounds and that `tryEval` does not contain either. The forcing is part of the encoding,
+  # not an optimisation; a caller with nothing to force passes `_: null`.
+  iterateBounded =
+    strict: step: init: bound:
+    foldl' (
+      st: _:
+      let
+        next = step st;
+      in
+      seq (strict next) next
+    ) init bound;
 
   # ── dedupByKey (vendored from den-hoag lib/dedup-by-key.nix; itself the port of v1 scope-walk
   # dedupByKey @ pin 11866c16) — no nixpkgs equivalent, so not in the fidelity suite. ──
@@ -198,6 +236,12 @@ in
   # always kept and never deduplicated. Vendored from den-hoag (no nixpkgs equivalent) → defined
   # in the let block above, literal-expectation tested, not fidelity.
   inherit dedupByKey;
+
+  # iterateBounded strict step init bound — `step` applied once per element of `bound` (its
+  # elements ignored, its length the bound), with `strict` forced on every intermediate state.
+  # The stack-safe encoding for a loop that carries state, as findFirstIndex is for a scan.
+  # gen-prelude-original (no nixpkgs equivalent) → literal-expectation tested, not fidelity.
+  inherit iterateBounded;
   filterAttrs =
     pred: a:
     listToAttrs (
