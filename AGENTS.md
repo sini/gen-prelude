@@ -76,6 +76,7 @@ substring  tail
 |---|---|
 | `indexOf` | `[a] -> a -> int` — **list first**, then needle; `-1` if absent |
 | `dedupByKey` | `(a -> string\|null) -> [a] -> [a]` — first-occurrence-wins, order-preserving; a `null` key is always kept and never entered into `seen` |
+| `iterateBounded` | `(s -> b) -> (s -> s) -> s -> [a] -> s` (strict, step, init, bound) — `step` once per element of `bound`, **elements ignored, only the length read**; `strict` forced on every intermediate state |
 
 **Internal, not exported**: `findFirstIndex` (the shared stack-safe scan under `findFirst`/`indexOf`), `listDfs`, `reverseList`. `replaceStrings` and `split` are inherited from `builtins` in the `let` block for internal use only and are **not** re-exported.
 
@@ -93,6 +94,7 @@ substring  tail
 | Find an element or its position | `findFirst pred default list` / `indexOf list x` — note the opposite argument orders |
 | Build an attrset from names | `genAttrs`; pair-wise via `nameValuePair` + `listToAttrs` |
 | Group a list by a string key | `groupBy` (the primop; linear, input order preserved within a group) |
+| Loop over state without recursing (a scan cannot carry it) | `iterateBounded strict step init bound` — the bound is a list you already hold; `strict` names the loop-carried fields |
 | Tie a knot | `fix` |
 | Type checking, module merge, or any domain concern | Not here — see the negative-space table |
 
@@ -113,6 +115,8 @@ Each row verified in this run. Shared fixtures: `p = import ./lib`; `ok e = (bui
 | `last`/`init` on `[ ]` throw with a **gen-prelude-specific message**, not nixpkgs' text (fidelity is over values, not error strings) | `ok (p.last [ ])` and `ok (p.init [ ])` ⇒ `false`; message: `error: gen-prelude.last: list must not be empty`. Control: `p.last [ 1 2 3 ]` ⇒ `3`. Test: `test-last-empty-throws` |
 | `toposort` is **gone**, and its absence is asserted rather than assumed | `p ? toposort` ⇒ `false`. Control on the same predicate in the same run: `p ? sort` ⇒ `true`. Tests: `test-toposort-not-exported`, `test-sort-still-exported` |
 | `findFirst` has no early cutoff — the `foldl'` walks every index — but it does **not force** elements past the match | `p.findFirst (x: x == 1) 0 [ 1 (throw "boom") ]` ⇒ `1`, `ok …` ⇒ `true`. `p.findFirst (_: true) "DEF" [ ]` ⇒ `"DEF"` |
+| **`iterateBounded`'s `strict` argument is load-bearing, and skipping it fails at a size no `max-call-depth` bounds** — `foldl'` forces the accumulator to WHNF, so a record's FIELDS accumulate a thunk chain that costs C stack on the final force, reported as a DIFFERENT signature | Same expression, same run, `st: { xs = st.xs ++ [ 1 ]; }` over `p.range 1 N`: with `strict = _: null` ⇒ `N=20000/50000` OK, **`N=100000` ⇒ `error: stack overflow (possible infinite recursion)`** — not `max-call-depth exceeded`. Paired control, same N: `strict = st: builtins.length st.xs` ⇒ `100000` returns |
+| **The encoding it exists for**: a self-applying loop spends one frame per iteration and its abort is uncatchable | `p.iterateBounded (_: null) (st: st + 1) 0 (p.range 1 20000)` ⇒ `20000` (twice the default `max-call-depth`). Positive control that the comparison loop runs at all: `let go = i: acc: if i == 0 then acc else go (i - 1) (acc + 1); in go 5000 0` ⇒ `5000`; the same at `20000` ⇒ `error: stack overflow; max-call-depth exceeded`, and wrapping it in `builtins.tryEval` aborts the evaluation rather than returning `false` |
 | `unique` compares structurally, so distinct attrsets with equal contents collapse | `p.unique [ { a = 1; } { a = 1; } { a = 2; } ]` ⇒ `[ { a = 1; } { a = 2; } ]` |
 | `groupBy` is the **primop alias**, not a vendored copy, and so carries no `prelude-fidelity` arm by design (`ci/tests/prelude.nix`, the "groupBy has NO fidelity arm" note in the `prelude-fidelity` suite; behaviour pinned instead by `test-groupBy` / `test-groupBy-empty` / `test-groupBy-collision-order` in the `prelude` suite) | `p.groupBy (s: substring 0 1 s) [ "art" "ale" "bar" ]` ⇒ `{ a = [ "art" "ale" ]; b = [ "bar" ]; }`, equal to `builtins.groupBy` on the same input. Identity cannot be shown by `==`: Nix function equality is always false — controls `builtins.groupBy == builtins.groupBy` ⇒ `false` and `let f = x: x; in f == f` ⇒ `false` |
 | `max` is `a > b`, so it works on any comparable, strings included | `p.max "a" "b"` ⇒ `"b"` |
@@ -124,7 +128,7 @@ Each row verified in this run. Shared fixtures: `p = import ./lib`; `ok e = (bui
 
 ## Theory
 
-**None claimed.** `README.md`'s own section is *Provenance*, not a research lineage: "gen-prelude has no research lineage — it is plumbing." The repo's claim structure is origin attribution plus a fidelity guarantee.
+**One encoding claim, and no research lineage.** `iterateBounded` is an encoding decision — bounded iteration in place of recursion to a fixed point — argued in `lib/default.nix` and README rather than copied from anywhere; everything else is vendored or aliased. `README.md`'s own section is *Provenance*: "gen-prelude has no research lineage — it is plumbing." The repo's claim structure is origin attribution plus a fidelity guarantee.
 
 **Origins** (README's Provenance table): `genAttrs`, `filterAttrs`, `mapAttrsToList`, `nameValuePair`, `optionalAttrs` ← nixpkgs `lib/attrsets.nix`; `optional`, `last`, `init`, `unique`, `imap0`, `range`, `findFirst` ← `lib/lists.nix`; `optionalString`, `concatMapStringsSep`, `hasPrefix`, `removePrefix` ← `lib/strings.nix`; `fix`, `max` ← `lib/trivial.nix` / `lib/fixed-points.nix`. `dedupByKey` ← den-hoag `lib/dedup-by-key.nix`; `indexOf` is gen-prelude-original.
 
@@ -141,7 +145,7 @@ The namespace is flat, so this one call is the whole contract — every name the
 Current output (verbatim):
 
 ```json
-["all","any","attrNames","attrValues","concatLists","concatMap","concatMapStringsSep","concatStringsSep","dedupByKey","elem","elemAt","escapeRegex","filter","filterAttrs","findFirst","fix","foldl'","functionArgs","genAttrs","genList","groupBy","hasInfix","hasPrefix","head","imap0","indexOf","init","isAttrs","isFunction","isList","last","length","listToAttrs","map","mapAttrs","mapAttrsToList","match","max","nameValuePair","optional","optionalAttrs","optionalString","partition","range","removePrefix","sort","stringLength","substring","tail","unique"]
+["all","any","attrNames","attrValues","concatLists","concatMap","concatMapStringsSep","concatStringsSep","dedupByKey","elem","elemAt","escapeRegex","filter","filterAttrs","findFirst","fix","foldl'","functionArgs","genAttrs","genList","groupBy","hasInfix","hasPrefix","head","imap0","indexOf","init","isAttrs","isFunction","isList","iterateBounded","last","length","listToAttrs","map","mapAttrs","mapAttrsToList","match","max","nameValuePair","optional","optionalAttrs","optionalString","partition","range","removePrefix","sort","stringLength","substring","tail","unique"]
 ```
 
 The command observes export *names* only; signatures, trap rows and `file:line` refs rot without changing it.

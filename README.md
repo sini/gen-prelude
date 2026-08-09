@@ -163,12 +163,44 @@ explicit `keyOf` projection. `sort` — the primitive comparator sort — stays 
 
 ### gen-prelude-original (no nixpkgs equivalent)
 
-Two small helpers with no `nixpkgs.lib` counterpart, so they are covered by the
+Three helpers with no `nixpkgs.lib` counterpart, so they are covered by the
 literal-expectation `prelude` suite rather than `prelude-fidelity`:
 
 - `indexOf xs x` — first position of `x` in `xs` (structural `==`), or `-1` if absent.
   List-first arg order (`xs` then `x`), built on the same stack-safe first-match scan as
   `findFirst`.
+
+- `iterateBounded strict step init bound` — `step` applied once per element of `bound`,
+  returning the state after the last application. **The elements of `bound` are ignored**:
+  only its length is read, as the bound on how many steps can be productive, so a caller
+  passes a list it already holds and the loop allocates nothing of its own.
+
+  The stack-safe encoding for a loop that carries state, as `findFirst`'s scan is for one
+  that does not. A loop written as a self-applying lambda spends one evaluator frame per
+  iteration — Nix does not reuse the frame of a tail call — so its descent depth is the
+  iteration count and past `max-call-depth` it aborts with a stack overflow `tryEval`
+  cannot catch; `foldl'` is a C-level loop whose frame cost is constant in the iteration
+  count. Iterating a fixed number of times where a recursion would run to its own fixed
+  point is sound on two properties the **caller** owes: at most `length bound` steps do
+  work, and `step` is the identity once no work remains, so the surplus steps idle.
+
+  `strict` names the loop-carried fields and is forced on every intermediate state.
+  `foldl'` forces its accumulator only to WHNF — for a record, the record and not its
+  fields — so a field left unforced accumulates a thunk chain as long as the loop, and
+  forcing it at the end costs C stack: a second, distinct overflow that no
+  `max-call-depth` setting bounds and that `tryEval` does not contain either. Pass
+  `_: null` when there is nothing to force.
+
+  ```nix
+  # gen-graph's Kahn loop: the node-key list is the bound, and the state's three
+  # accumulating fields are what `strict` forces.
+  prelude.iterateBounded
+    (st: builtins.seq st.indeg (builtins.length st.emitted))
+    step
+    { indeg = indeg0; ready = sources; cursor = 0; emitted = [ ]; }
+    keys
+  ```
+
 - `dedupByKey getKey list` — first-occurrence-wins dedup by `getKey x`, order-preserving.
   A `null` key is **always kept and never deduplicated** — the safe direction against
   silent cross-scope content-loss (a keyless element cannot be proven a duplicate, so a
@@ -183,13 +215,17 @@ cd ci && nix flake check
 
 The `ci/` directory is a separate flake (it pulls nixpkgs only to supply the `lib`
 oracle the fidelity suite compares against — the lib itself pulls nothing). It runs
-**58 tests across 2 suites**:
+**65 tests across 2 suites**:
 
-- **`prelude`** (19) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
+- **`prelude`** (26) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
   `filterAttrs`, `fix`, the `toposort` retirement + its `sort` control, empty-list throw, `groupBy` basic +
   empty + collision-order stability, plus the gen-prelude-originals `dedupByKey`
-  first-occurrence + null-keep + empty, `indexOf` present/absent/first, and `findFirst`
-  match/default).
+  first-occurrence + null-keep + empty, `indexOf` present/absent/first, `findFirst`
+  match/default, and `iterateBounded` count + ignored elements + empty bound + surplus-step
+  idling + forced/unforced pair + stack safety at 20000 iterations). The `iterateBounded`
+  arm that must FAIL — a self-applying loop at the same size — is not here: a stack overflow
+  is an uncatchable abort, so no in-language assertion observes it, and the red arm is a
+  shell command.
 - **`prelude-fidelity`** (39) — the load-bearing guard: for every nixpkgs-vendored
   utility, `prelude.X input == lib.X input` over normal and boundary inputs (empty lists,
   absent prefixes, reversed ranges, cycles). This is what keeps the vendored copies
@@ -204,7 +240,9 @@ no inputs, so there is no `nixpkgs.lib` in scope to accidentally depend on.
 
 ## Provenance
 
-gen-prelude has no research lineage — it is plumbing. The `builtins` members are direct
+gen-prelude has no research lineage — it is plumbing, with one exception: `iterateBounded`
+is an encoding decision rather than a copy, and its rationale is stated with it above.
+The `builtins` members are direct
 re-exports of the Nix `builtins` set. The vendored utilities are copied
 behavior-identically from `nixpkgs` `lib`:
 
@@ -219,12 +257,13 @@ The `prelude-fidelity` test suite asserts each utility stays
 behavior-identical to its `nixpkgs.lib` original, so the vendoring cannot silently
 drift.
 
-Two members are **gen-prelude-original** (no nixpkgs origin), so they are held by the
+Three members are **gen-prelude-original** (no nixpkgs origin), so they are held by the
 literal-expectation `prelude` suite rather than `prelude-fidelity`:
 
 | Utility | origin |
 |---------|--------|
 | `indexOf` | gen-prelude-original — small list helper (den-hoag hand-roll shape); shares the internal stack-safe `findFirstIndex` scan (`lib/lists.nix:575`) that also backs `findFirst` |
+| `iterateBounded` | gen-prelude-original — the stack-safe loop encoding for state a scan cannot carry; nothing was vendored, so there is no fidelity oracle to hold it against |
 | `dedupByKey` | vendored from den-hoag `lib/dedup-by-key.nix` (itself the port of v1 scope-walk `dedupByKey`); null-keep semantics have no `nixpkgs.lib` counterpart |
 
 ## License
