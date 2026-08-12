@@ -223,7 +223,7 @@ cd ci && nix flake check
 
 The `ci/` directory is a separate flake (it pulls nixpkgs only to supply the `lib`
 oracle the fidelity suite compares against — the lib itself pulls nothing). It runs
-**95 tests across 2 suites**:
+**113 tests across 2 suites**:
 
 - **`prelude`** (47) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
   `filterAttrs`, `fix`, the `toposort` retirement + its `sort` control, empty-list throw, `groupBy` basic +
@@ -248,7 +248,7 @@ oracle the fidelity suite compares against — the lib itself pulls nothing). It
   null-keep at EQUAL content, order across a mixed keyed/unkeyed input, and stack safety
   at 50,000 elements.
 
-- **`prelude-fidelity`** (48) — the load-bearing guard: for every nixpkgs-vendored
+- **`prelude-fidelity`** (66) — the load-bearing guard: for every nixpkgs-vendored
   utility, `prelude.X input == lib.X input` over normal and boundary inputs (empty lists,
   absent prefixes, reversed ranges, cycles). This is what keeps the vendored copies
   byte-behavior-identical to nixpkgs `lib`. (`indexOf` is additionally cross-checked
@@ -256,6 +256,15 @@ oracle the fidelity suite compares against — the lib itself pulls nothing). It
   the `prelude` suite. `groupBy` has no arm here either — it is a `builtins` re-export, and
   nixpkgs' own `lib.groupBy` is `builtins.groupBy or (…)`, so a fidelity arm over it would
   compare the primop with itself.)
+
+  Eighteen of those arms are `escapeRegex`'s metacharacter set, which gets per-member
+  coverage rather than a table of representative cases: which member is wrong decides which
+  needle notices, so a sample cannot see it. Twelve `test-escset-*` arms cover a member
+  DROPPED (the needle stops being quoted and becomes a pattern — eight flip the boolean,
+  four raise); `test-escapeRegex-printable-ascii` covers a member ADDED, by byte-identity
+  against `lib.escapeRegex` over all 95 printable ASCII characters. The remaining five hold
+  `]` to being a NON-member from both sides — escaping it emits `\]`, which the regex engine
+  rejects, so the needle aborts where nixpkgs answers, and `tryEval` does not catch it.
 
 There is no separate `purity` suite because purity is structural: the lib flake declares
 no inputs, so there is no `nixpkgs.lib` in scope to accidentally depend on.
