@@ -202,25 +202,38 @@ let
   # cross-scope duplicate, so a false-keep of equal content equal-merges harmlessly, whereas a
   # false-collapse of distinct content is silent content-loss). null-key nodes neither evict a
   # later duplicate nor are evicted.
+  #
+  # THEORY: the recursion this replaces was `[ x ] ++ go … rest` — an append per surviving element
+  # and a `builtins.tail` copy per step, so it cost Θ(N²) IN THE LIST LENGTH whatever the distinct
+  # count: measured `N² + 2N + 2` list elements (1,002,002 / 4,004,002 / 16,008,002 at N = 1,000 /
+  # 2,000 / 4,000, exponent 1.9993). The O(1) attrset membership test bought nothing, because the
+  # append was the cost, not the lookup. Worse, `go` is not in tail position — the recursive call
+  # must be forced to build the `++` — so descent depth WAS the input length and the function
+  # aborted uncatchably past `max-call-depth`: measured, 5,000 and 9,000 evaluate, 10,000 and above
+  # give `error: stack overflow; max-call-depth exceeded`, a ceiling inside the range of real
+  # inputs. `tryEval` does not contain it.
+  #
+  # The shape below is the same key→first-index table `unique` uses, and it is linear and
+  # frame-flat for the same reasons: `listToAttrs` keeps the FIRST binding for a repeated name, so
+  # the table's values ARE the first-occurrence indices, and sorting indices ascending recovers
+  # input order. Every step is a primop, so there is no Nix-level recursion to overflow — measured
+  # `5N + 5` elements (20,005 at N = 4,000, exponent 0.9996) and it evaluates at N = 200,000.
+  #
+  # The `null` key is the one part that does not transcribe mechanically, and it is where a silent
+  # content-loss would enter. Unkeyed elements are filtered OUT of the table (never entered into
+  # the index, so they can never evict a later duplicate) and their indices are added back to the
+  # kept set unconditionally (so they can never be evicted). Both directions are load-bearing.
   dedupByKey =
     getKey: list:
     let
-      go =
-        seen: items:
-        if items == [ ] then
-          [ ]
-        else
-          let
-            x = head items;
-            rest = tail items;
-            k = getKey x;
-          in
-          if k != null && seen ? ${k} then
-            go seen rest
-          else
-            [ x ] ++ go (if k != null then seen // { ${k} = true; } else seen) rest;
+      pairs = genList (i: {
+        name = getKey (elemAt list i);
+        value = i;
+      }) (length list);
+      firstIdx = listToAttrs (filter (p: p.name != null) pairs);
+      unkeyed = concatMap (p: if p.name == null then [ p.value ] else [ ]) pairs;
     in
-    go { } list;
+    map (i: elemAt list i) (sort (a: b: a < b) (attrValues firstIdx ++ unkeyed));
 in
 {
   # ── builtins re-exports (aliases; zero new code) ──

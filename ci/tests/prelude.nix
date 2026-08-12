@@ -504,6 +504,91 @@ in
         expr = p.dedupByKey (n: n.k) [ ];
         expected = [ ];
       };
+      # ★ NULL-KEEP, at EQUAL CONTENT (the case the arm above cannot make). The two keyless
+      #   elements are indistinguishable, so an implementation that entered them into `seen` — or
+      #   that deduped them structurally — collapses them to one and loses content silently. Both
+      #   must survive, and the keyed duplicate must still go: the two directions are separate
+      #   claims and this asserts them together.
+      test-dedupByKey-null-equal-content-both-survive = {
+        expr = p.dedupByKey (n: n.k) [
+          {
+            k = null;
+            tag = "same";
+          }
+          {
+            k = "a";
+            tag = "keyed";
+          }
+          {
+            k = null;
+            tag = "same";
+          }
+          {
+            k = "a";
+            tag = "dropped";
+          }
+        ];
+        expected = [
+          {
+            k = null;
+            tag = "same";
+          }
+          {
+            k = "a";
+            tag = "keyed";
+          }
+          {
+            k = null;
+            tag = "same";
+          }
+        ];
+      };
+      # Stack safety, the property the re-expression exists for, and the reason it is not a
+      # micro-optimisation: the naive `[ x ] ++ go … rest` recursion this replaces spent one
+      # evaluator frame per element and aborted UNCATCHABLY past `max-call-depth` — measured, it
+      # evaluated at 9,000 and died at 10,000, a ceiling inside the range of real inputs. 50,000
+      # is five times that ceiling. Every step here is a primop, so there is no descent at all.
+      test-dedupByKey-stack-safe-at-scale = {
+        expr = builtins.length (
+          p.dedupByKey (n: n.k) (builtins.genList (i: { k = "key-${toString i}"; }) 50000)
+        );
+        expected = 50000;
+      };
+      # Order is preserved across a mixed keyed/unkeyed input — the kept set is assembled from
+      # two sources (the index table and the unkeyed positions) and must interleave by position,
+      # not concatenate by source.
+      test-dedupByKey-order-across-null-and-keyed = {
+        expr = map (n: n.id) (
+          p.dedupByKey (n: n.k) [
+            {
+              k = "b";
+              id = 0;
+            }
+            {
+              k = null;
+              id = 1;
+            }
+            {
+              k = "a";
+              id = 2;
+            }
+            {
+              k = "b";
+              id = 3;
+            }
+            {
+              k = null;
+              id = 4;
+            }
+          ]
+        );
+        expected = [
+          0
+          1
+          2
+          4
+        ];
+      };
 
       # indexOf: first position or -1.
       test-indexOf-present = {
