@@ -279,7 +279,7 @@ That makes the trade explicit rather than uniform:
 |---|---|---|
 | K ≈ N (all-distinct) | string path, by a lot | 8,010,002 → 20,003 elements at N = K = 4,000 |
 | N ≈ 2K (an endpoint union over an edge list) | string path | 23.3× fewer at N = 640, 91.9× at N = 2,560, doubling with every doubling |
-| K ≪ N (few distinct values, long list) | the fold | string path converges to exactly 2.00× more allocation, and time drifts as `log N / K` — measured +30% at N = 400,000, K = 8 |
+| K ≪ N (few distinct values, long list) | the fold | string path converges to exactly 2.00× more allocation, and time drifts as `log N / K` — measured +29.5% at N = 400,000, K = 8 |
 
 The string path is chosen whenever it applies because the K ≪ N penalty is bounded at 2.00×
 while the K ≈ N saving is unbounded and grows with input size. If you are deduplicating a
@@ -292,7 +292,7 @@ so a non-string list has no index table to build at all, and the fold is what ke
 total on ints, lists, attrsets and functions. The guard is per-**list**, not per-element: a
 mixed list routes whole to the fold.
 
-`dedupByKey` is linear (`5N + 5`) and frame-flat. It previously used a non-tail `[ x ] ++ go … rest` recursion, which was quadratic **in N** whatever the distinct count and, worse, spent
+`dedupByKey` is linear (`5N + 3`) and frame-flat. It previously used a non-tail `[ x ] ++ go … rest` recursion, which was quadratic **in N** whatever the distinct count and, worse, spent
 one evaluator frame per element — so it aborted uncatchably past `max-call-depth` at around
 10,000 elements. Every step is now a primop, so there is no descent left to overflow.
 

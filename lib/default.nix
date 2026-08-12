@@ -142,7 +142,7 @@ let
   # FIRST binding for a repeated name, so the table holds exactly the K first-occurrence indices;
   # sorting those indices ascending IS first-occurrence order; and `elemAt` hands back the
   # ORIGINAL element, so nothing about the value is reconstructed from its key. Closed form
-  # `2N + 3K + 3` — linear in both variables (20,003 at N = K = 4,000, exponent 0.9996). At the
+  # `2N + 3K + 3` — linear in both variables (20,003 at N = K = 4,000, exponent 0.99978). At the
   # shape real callers present — an endpoint union over an edge list, where every edge contributes
   # two endpoints and the distinct endpoints are nodes, so N ≈ 2K — this measures 23.3× and 91.9×
   # fewer elements at N = 640 and 2,560, and the improvement DOUBLES with every doubling of the
@@ -158,7 +158,7 @@ let
   # THE TRADE IS REAL AND IS STATED: at K ≪ N the table costs Ω(N) pairs where the fold allocated
   # only Θ(K²), so allocation converges to exactly 2.00× worse (1.43× / 1.85× / 1.97× / 2.00× at
   # K = 26, N = 800 / 4,000 / 20,000 / 400,000) and time drifts as `log N / K` — `listToAttrs`
-  # orders N entries in Θ(N log N) against the fold's Θ(N·K) scan — measured +30% at N = 400,000,
+  # orders N entries in Θ(N log N) against the fold's Θ(N·K) scan — measured +29.5% at N = 400,000,
   # K = 8. Whenever K² ≪ N the fold allocates less, and no attrset-keyed construction escapes
   # that, because any of them must hand `listToAttrs` N pairs.
   #
@@ -217,7 +217,8 @@ let
   # frame-flat for the same reasons: `listToAttrs` keeps the FIRST binding for a repeated name, so
   # the table's values ARE the first-occurrence indices, and sorting indices ascending recovers
   # input order. Every step is a primop, so there is no Nix-level recursion to overflow — measured
-  # `5N + 5` elements (20,005 at N = 4,000, exponent 0.9996) and it evaluates at N = 200,000.
+  # `5N + 3` elements (20,003 at N = 4,000, exponent 0.99978) and it evaluates at N = 200,000,
+  # where it reads 1,000,003.
   #
   # The `null` key is the one part that does not transcribe mechanically, and it is where a silent
   # content-loss would enter. Unkeyed elements are filtered OUT of the table (never entered into
