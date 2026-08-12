@@ -28,6 +28,78 @@ let
     strict: (builtins.tryEval (p.iterateBounded strict (st: st) { boom = throw "x"; } [ 1 ])).success;
   showKV = n: v: "${n}=${toString v}";
   idxShow = i: x: "${toString i}:${toString x}";
+
+  # ── unique's parity oracle ──
+  # The expression `unique` used to be, kept verbatim. Arms that say "agrees with the incumbent"
+  # compare against THIS, evaluated in the same run, never against a remembered figure.
+  incumbentUnique = builtins.foldl' (acc: x: if builtins.elem x acc then acc else acc ++ [ x ]) [ ];
+
+  # `tryEval ∘ length` — the only instrument that observes HOW MUCH a construction forces. Every
+  # other arm compares under `==`, which forces both sides and is therefore structurally blind to
+  # strictness: a guard that evaluates an element the incumbent never touches passes all of them.
+  forces =
+    f: xs:
+    let
+      r = builtins.tryEval (builtins.length (f xs));
+    in
+    if r.success then toString r.value else "ABORT";
+
+  # A context-carrying string: legal as a `unique` element, ILLEGAL as an attribute name. The
+  # fixture exists so the keying is tested against a value no consumer sweep can rule out.
+  ctxStr = "${derivation {
+    name = "ctx-fixture";
+    builder = "/bin/sh";
+    system = "x86_64-linux";
+  }}";
+
+  # The value classes strictness parity is asserted over. Grouped by what each one can catch.
+  strictnessClasses = {
+    singletonBottom = [ (throw "BOOM") ]; # ★ the load-bearing case
+    singletonUnforcedField = [ { a = throw "deep"; } ];
+    emptyList = [ ];
+    singletonString = [ "q" ];
+    mixedStringInt = [
+      "a"
+      1
+    ];
+    intThenBottom = [
+      1
+      (throw "B")
+    ];
+    bottomThenInt = [
+      (throw "A")
+      1
+    ];
+    bottomThenString = [
+      (throw "A")
+      "b"
+    ];
+    stringThenBottom = [
+      "a"
+      (throw "B")
+    ];
+    twoBottoms = [
+      (throw "A")
+      (throw "B")
+    ];
+    stringsThenBottom = [
+      "a"
+      "b"
+      (throw "C")
+    ];
+    equalAttrs = [
+      { a = 1; }
+      { a = 1; }
+    ];
+    attrs24 = builtins.genList (i: { v = i; }) 24;
+    shuffledDups = [
+      "c"
+      "a"
+      "b"
+      "a"
+      "c"
+    ];
+  };
 in
 {
   flake.tests = {
@@ -46,6 +118,238 @@ in
           1
           2
         ];
+      };
+
+      # ── unique: ORDER ──
+      # First-occurrence order is what keeps the nixpkgs fidelity assertion true, so it is
+      # asserted element-for-element. Comparing lengths or sorted contents would not test it.
+      test-unique-order-shuffled = {
+        expr = p.unique [
+          "c"
+          "a"
+          "b"
+          "a"
+          "c"
+          "c"
+          "d"
+          "b"
+        ];
+        expected = [
+          "c"
+          "a"
+          "b"
+          "d"
+        ];
+      };
+      # ★ ORDER TRAPS. Both are designed to break a construction that sorts KEYS rather than
+      #   first-occurrence INDICES: the first is in descending key order throughout, the second
+      #   orders differently under string and numeric comparison. A key-sorting implementation
+      #   returns ["a","w","x","y","z"] and ["1","10","2","9"] here and fails loudly.
+      test-unique-order-not-key-sorted = {
+        expr = p.unique [
+          "z"
+          "y"
+          "x"
+          "w"
+          "z"
+          "a"
+        ];
+        expected = [
+          "z"
+          "y"
+          "x"
+          "w"
+          "a"
+        ];
+      };
+      test-unique-order-numeric-strings = {
+        expr = p.unique [
+          "10"
+          "9"
+          "2"
+          "10"
+          "1"
+        ];
+        expected = [
+          "10"
+          "9"
+          "2"
+          "1"
+        ];
+      };
+      test-unique-all-duplicates = {
+        expr = p.unique [
+          "x"
+          "x"
+          "x"
+          "x"
+        ];
+        expected = [ "x" ];
+      };
+      test-unique-singleton = {
+        expr = p.unique [ "q" ];
+        expected = [ "q" ];
+      };
+
+      # ── unique: STRING CONTEXT ──
+      # ★ A context-carrying string is a legal element and an illegal attribute name, so the key
+      #   must discard context while the RESULT must keep it. `agrees` pins the partition (`==`
+      #   ignores context, so the two copies collapse); `ctx` pins that the survivor is the
+      #   caller's original value and not a rebuilt key. Without this arm the trap is untested,
+      #   and it fails as an UNCATCHABLE abort rather than a wrong answer.
+      test-unique-string-context = {
+        expr =
+          let
+            input = [
+              ctxStr
+              ctxStr
+              "plain"
+            ];
+            r = p.unique input;
+          in
+          {
+            len = builtins.length r;
+            ctx = builtins.hasContext (builtins.head r);
+            agrees = r == incumbentUnique input;
+          };
+        expected = {
+          len = 2;
+          ctx = true;
+          agrees = true;
+        };
+      };
+
+      # ── unique: NON-STRING ROUTING ──
+      # `unique` is total on its whole domain, and the fold is retained to keep it that way. Each
+      # case asserts equality with the incumbent element-for-element, not merely that it does not
+      # throw — a construction that narrows the domain to strings fails here loudly.
+      test-unique-routes-ints = {
+        expr = p.unique [
+          1
+          2
+          2
+          3
+        ];
+        expected = incumbentUnique [
+          1
+          2
+          2
+          3
+        ];
+      };
+      test-unique-routes-lists = {
+        expr = p.unique [
+          [ 1 ]
+          [ 1 ]
+          [ 2 ]
+        ];
+        expected = incumbentUnique [
+          [ 1 ]
+          [ 1 ]
+          [ 2 ]
+        ];
+      };
+      test-unique-routes-attrs = {
+        expr = p.unique [
+          { a = 1; }
+          { a = 1; }
+          { b = 2; }
+        ];
+        expected = incumbentUnique [
+          { a = 1; }
+          { a = 1; }
+          { b = 2; }
+        ];
+      };
+      # ★ The guard is per-LIST, not per-element: a mixed list routes WHOLE to the fold. A
+      #   per-element guard would dedupe the strings against a separate table and reorder.
+      test-unique-routes-mixed-whole-list = {
+        expr = p.unique [
+          "a"
+          1
+          "a"
+          1
+        ];
+        expected = incumbentUnique [
+          "a"
+          1
+          "a"
+          1
+        ];
+      };
+      # ★ 24 attrset elements — the shape observed in real calls, and the one both proposed
+      #   string-only restrictions would have aborted on.
+      test-unique-routes-attrs24 = {
+        expr = p.unique strictnessClasses.attrs24;
+        expected = incumbentUnique strictnessClasses.attrs24;
+      };
+      test-unique-routes-attrs24-with-dups = {
+        expr =
+          let
+            input = builtins.genList (i: { v = i - (i / 8) * 8; }) 24;
+          in
+          p.unique input == incumbentUnique input && builtins.length (p.unique input) == 8;
+        expected = true;
+      };
+
+      # ── unique: STRICTNESS PARITY ──
+      # ★ THE LOAD-BEARING CASE. `elem x [ ]` answers false without comparing, so the incumbent
+      #   never forces the sole element of a singleton. A bare `all isString` guard does force it,
+      #   turning a working call into an abort — which is why the length guard is part of the
+      #   construction and not an optimisation. This case reads ABORT under that guard.
+      test-unique-singleton-bottom-not-forced = {
+        expr = forces p.unique [ (throw "BOOM") ];
+        expected = "1";
+      };
+      # The same predicate over all 14 value classes, incumbent against candidate, in one run.
+      test-unique-strictness-parity = {
+        expr = builtins.mapAttrs (_: forces p.unique) strictnessClasses;
+        expected = builtins.mapAttrs (_: forces incumbentUnique) strictnessClasses;
+      };
+      # Control on the same instrument in the same run: `forces` DOES report aborts, so the
+      # parity above is a finding and not a predicate that could never have read ABORT.
+      test-unique-strictness-instrument-control = {
+        expr = forces p.unique [
+          "a"
+          (throw "B")
+        ];
+        expected = "ABORT";
+      };
+
+      # ── unique: the evaluator assumptions the construction rests on ──
+      # Both silently invalidate the first-index table if a future evaluator changes them, and
+      # neither is visible in any behavioural arm, so they are asserted rather than trusted.
+      test-listToAttrs-keeps-first-binding = {
+        expr = builtins.listToAttrs [
+          {
+            name = "a";
+            value = 1;
+          }
+          {
+            name = "a";
+            value = 2;
+          }
+        ];
+        expected = {
+          a = 1;
+        };
+      };
+      test-equality-ignores-string-context = {
+        expr = ctxStr == builtins.unsafeDiscardStringContext ctxStr;
+        expected = true;
+      };
+      # `unsafeDiscardStringContext` is internal: its name is a warning that should not be handed
+      # to consumers casually. Control on the same predicate in the same run — the builtins this
+      # library DOES re-export still answer true, so the absence is a finding.
+      test-unsafeDiscardStringContext-not-exported = {
+        expr = {
+          leaked = p ? unsafeDiscardStringContext;
+          control = p ? listToAttrs && p ? sort && p ? unique;
+        };
+        expected = {
+          leaked = false;
+          control = true;
+        };
       };
       test-filterAttrs = {
         expr = p.filterAttrs gt1 attrs;
@@ -349,6 +653,116 @@ in
       test-unique-empty = {
         expr = p.unique [ ];
         expected = lib.unique [ ];
+      };
+      # The case above routes to the retained fold (`xs` is integers), so on its own it leaves the
+      # STRING path — the one this library reimplemented — with no nixpkgs oracle at all. These
+      # put it under the same assertion, which is the whole warrant for first-occurrence order.
+      test-unique-strings = {
+        expr = p.unique [
+          "c"
+          "a"
+          "b"
+          "a"
+          "c"
+          "c"
+          "d"
+          "b"
+        ];
+        expected = lib.unique [
+          "c"
+          "a"
+          "b"
+          "a"
+          "c"
+          "c"
+          "d"
+          "b"
+        ];
+      };
+      test-unique-strings-descending = {
+        expr = p.unique [
+          "z"
+          "y"
+          "x"
+          "w"
+          "z"
+          "a"
+        ];
+        expected = lib.unique [
+          "z"
+          "y"
+          "x"
+          "w"
+          "z"
+          "a"
+        ];
+      };
+      test-unique-strings-all-duplicates = {
+        expr = p.unique [
+          "x"
+          "x"
+          "x"
+        ];
+        expected = lib.unique [
+          "x"
+          "x"
+          "x"
+        ];
+      };
+      test-unique-singleton = {
+        expr = p.unique [ "q" ];
+        expected = lib.unique [ "q" ];
+      };
+      # The domain nixpkgs `lib.unique` also accepts, and which the retained fold is what keeps
+      # reachable: lists, attrsets, and a mixed list that must route whole rather than per element.
+      test-unique-lists = {
+        expr = p.unique [
+          [ 1 ]
+          [ 1 ]
+          [ 2 ]
+        ];
+        expected = lib.unique [
+          [ 1 ]
+          [ 1 ]
+          [ 2 ]
+        ];
+      };
+      test-unique-attrs = {
+        expr = p.unique [
+          { a = 1; }
+          { a = 1; }
+          { b = 2; }
+        ];
+        expected = lib.unique [
+          { a = 1; }
+          { a = 1; }
+          { b = 2; }
+        ];
+      };
+      test-unique-mixed = {
+        expr = p.unique [
+          "a"
+          1
+          "a"
+          1
+        ];
+        expected = lib.unique [
+          "a"
+          1
+          "a"
+          1
+        ];
+      };
+      test-unique-attrs24 = {
+        expr = p.unique strictnessClasses.attrs24;
+        expected = lib.unique strictnessClasses.attrs24;
+      };
+      # Strictness is a fidelity property too, and no `==` comparison above can see it: both sides
+      # of an equality are forced. nixpkgs `lib.unique` returns 1 here, so the length guard is
+      # what keeps this assertion true rather than an extra the vendored copy added.
+      test-unique-strictness-vs-nixpkgs = {
+        expr = builtins.mapAttrs (_: forces p.unique) strictnessClasses;
+        expected = builtins.mapAttrs (_: forces lib.unique) strictnessClasses;
       };
       test-filterAttrs = {
         expr = p.filterAttrs gt1 attrs;

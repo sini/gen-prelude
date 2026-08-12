@@ -28,6 +28,7 @@ let
     isAttrs
     isFunction
     isList
+    isString
     length
     listToAttrs
     map
@@ -41,6 +42,7 @@ let
     stringLength
     substring
     tail
+    unsafeDiscardStringContext
     ;
 
   nameValuePair = name: value: { inherit name value; };
@@ -125,6 +127,73 @@ let
       in
       seq (strict next) next
     ) init bound;
+
+  # ── unique — order-preserving dedup under structural `==`, as a guarded two-path ──
+  # The incumbent `foldl' (acc: x: if elem x acc then acc else acc ++ [ x ]) [ ]` is QUADRATIC IN
+  # THE DISTINCT COUNT K, not in the list length N, and that distinction is the whole design:
+  # `acc ++ [ x ]` copies the entire accumulator on each of the K first-sightings, Σ(k+1) for
+  # k = 0..K−1 = K(K+1)/2, giving the measured closed form `K(K+1)/2 + K + N + 2` list elements
+  # (all-distinct: 502,502 / 2,005,002 / 8,010,002 at N = K = 1,000 / 2,000 / 4,000, exponent
+  # 1.9982). THE APPEND IS THE COST. The `elem` scan is Θ(N·K) in comparisons but allocates
+  # nothing, so it is invisible to every allocation counter — which is why an attrset-keyed
+  # membership test alone fixes nothing here.
+  #
+  # The string path builds a key→first-index table in one pass instead. `listToAttrs` keeps the
+  # FIRST binding for a repeated name, so the table holds exactly the K first-occurrence indices;
+  # sorting those indices ascending IS first-occurrence order; and `elemAt` hands back the
+  # ORIGINAL element, so nothing about the value is reconstructed from its key. Closed form
+  # `2N + 3K + 3` — linear in both variables (20,003 at N = K = 4,000, exponent 0.9996). At the
+  # shape real callers present — an endpoint union over an edge list, where every edge contributes
+  # two endpoints and the distinct endpoints are nodes, so N ≈ 2K — this measures 23.3× and 91.9×
+  # fewer elements at N = 640 and 2,560, and the improvement DOUBLES with every doubling of the
+  # input.
+  #
+  # Keying on `unsafeDiscardStringContext` is exactness, not a safety hatch. A context-carrying
+  # string is a legal element (`==` ignores context, so `s == unsafeDiscardStringContext s`) and an
+  # ILLEGAL attribute name (`listToAttrs` rejects it: "not allowed to refer to a store path"), so
+  # keying on the element as-is would be a latent eval-time abort. Discarding context in the KEY
+  # reproduces `==`'s partition precisely; returning the original element preserves the caller's
+  # context.
+  #
+  # THE TRADE IS REAL AND IS STATED: at K ≪ N the table costs Ω(N) pairs where the fold allocated
+  # only Θ(K²), so allocation converges to exactly 2.00× worse (1.43× / 1.85× / 1.97× / 2.00× at
+  # K = 26, N = 800 / 4,000 / 20,000 / 400,000) and time drifts as `log N / K` — `listToAttrs`
+  # orders N entries in Θ(N log N) against the fold's Θ(N·K) scan — measured +30% at N = 400,000,
+  # K = 8. Whenever K² ≪ N the fold allocates less, and no attrset-keyed construction escapes
+  # that, because any of them must hand `listToAttrs` N pairs.
+  #
+  # THE INCUMBENT FOLD IS RETAINED DELIBERATELY, and is not an oversight left behind by the
+  # rewrite. It is the TOTAL path. There is no total, injective, pure value→string key in Nix —
+  # `toJSON` is not one, since it aborts on functions and forces deeply, which would change
+  # strictness — so a non-string list has no index table to build at all, and `unique` must stay
+  # total on ints, lists, attrsets and functions, all of which it accepts today and real callers
+  # pass. The guard is therefore per-LIST rather than per-element: a mixed list routes whole to the
+  # fold, which is what reproduces `unique [ "a" 1 "a" 1 ]` ⇒ `[ "a", 1 ]` exactly.
+  #
+  # The `length xs < 2` guard is STRICTNESS PARITY, not an optimisation, and it is why the two-path
+  # forces no more than the fold. Without it, `all isString` would force the sole element of a
+  # singleton where the fold does not: `elem x [ ]` answers false without comparing, so
+  # `unique [ (throw "BOOM") ]` has length 1 under the fold and would ABORT under a bare guard. At
+  # N ≥ 2 the fold forces every element to WHNF anyway — each is the `x` of `elem x acc`, with
+  # `acc` non-empty from the second step — and `all isString` forces to WHNF and short-circuits, so
+  # it forces no more and sometimes less. A list of length ≤ 1 cannot contain a duplicate, so
+  # returning it unevaluated is not a fast path, it is the definition.
+  unique =
+    xs:
+    if length xs < 2 then
+      xs
+    else if all isString xs then
+      let
+        firstIdx = listToAttrs (
+          genList (i: {
+            name = unsafeDiscardStringContext (elemAt xs i);
+            value = i;
+          }) (length xs)
+        );
+      in
+      map (i: elemAt xs i) (sort (a: b: a < b) (attrValues firstIdx))
+    else
+      foldl' (acc: x: if elem x acc then acc else acc ++ [ x ]) [ ] xs;
 
   # ── dedupByKey (vendored from den-hoag lib/dedup-by-key.nix; itself the port of v1 scope-walk
   # dedupByKey @ pin 11866c16) — no nixpkgs equivalent, so not in the fidelity suite. ──
@@ -214,7 +283,9 @@ in
       throw "gen-prelude.init: list must not be empty"
     else
       genList (i: elemAt xs i) (length xs - 1);
-  unique = foldl' (acc: x: if elem x acc then acc else acc ++ [ x ]) [ ];
+  # unique xs — order-preserving deduplication under structural `==`. See the let block above for
+  # why this is a two-path and why the fold is still here.
+  inherit unique;
 
   # findFirst pred default list — the first element satisfying `pred`, else `default`.
   # Behavior-identical to nixpkgs lib.findFirst (foldl'-based via findFirstIndex; stack-safe,
