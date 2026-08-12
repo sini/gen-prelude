@@ -27,6 +27,7 @@ covered by the literal-expectation `prelude` suite instead; see [Provenance](#pr
 - [Usage](#usage)
 - [API Reference](#api-reference)
 - [Testing](#testing)
+- [Performance](#performance)
 - [Provenance](#provenance)
 
 ## Overview
@@ -131,7 +132,12 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
 - `optionalString cond s` — `s` if `cond` else `""`.
 - `last xs` — final element (throws on `[ ]`).
 - `init xs` — all but the final element (throws on `[ ]`).
-- `unique xs` — order-preserving deduplication.
+- `unique xs` — order-preserving deduplication under structural `==`, first occurrence
+  kept. Total on every value: ints, lists, attrsets and functions all work. Internally a
+  guarded two-path — a list of strings routes to a linear key→first-index table, anything
+  else to the original quadratic fold, retained deliberately because Nix has no total
+  injective pure value→string key. See [Performance](#performance) for what each path
+  costs and where the trade lies.
 - `findFirst pred default list` — the first element satisfying `pred`, else `default`
   (nixpkgs `lib.findFirst`; `foldl'`-based, stack-safe, no early cutoff).
 - `filterAttrs pred attrs` — attrset keeping entries where `pred name value`.
@@ -205,7 +211,9 @@ literal-expectation `prelude` suite rather than `prelude-fidelity`:
   A `null` key is **always kept and never deduplicated** — the safe direction against
   silent cross-scope content-loss (a keyless element cannot be proven a duplicate, so a
   false-keep equal-merges harmlessly whereas a false-collapse silently drops distinct
-  content). Vendored from den-hoag `lib/dedup-by-key.nix`.
+  content). Vendored from den-hoag `lib/dedup-by-key.nix`. `getKey` must return a string
+  or `null`: any other type is an interpreter type error at the attribute-name site, which
+  `tryEval` does **not** catch.
 
 ## Testing
 
@@ -215,9 +223,9 @@ cd ci && nix flake check
 
 The `ci/` directory is a separate flake (it pulls nixpkgs only to supply the `lib`
 oracle the fidelity suite compares against — the lib itself pulls nothing). It runs
-**65 tests across 2 suites**:
+**95 tests across 2 suites**:
 
-- **`prelude`** (26) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
+- **`prelude`** (47) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
   `filterAttrs`, `fix`, the `toposort` retirement + its `sort` control, empty-list throw, `groupBy` basic +
   empty + collision-order stability, plus the gen-prelude-originals `dedupByKey`
   first-occurrence + null-keep + empty, `indexOf` present/absent/first, `findFirst`
@@ -226,7 +234,21 @@ oracle the fidelity suite compares against — the lib itself pulls nothing). It
   arm that must FAIL — a self-applying loop at the same size — is not here: a stack overflow
   is an uncatchable abort, so no in-language assertion observes it, and the red arm is a
   shell command.
-- **`prelude-fidelity`** (39) — the load-bearing guard: for every nixpkgs-vendored
+
+  `unique`'s two-path carries its own group: first-occurrence ORDER (including two traps
+  that a construction sorting keys rather than indices fails); STRING CONTEXT (a
+  context-carrying string is a legal element and an illegal attribute name, so this arm
+  fails as an uncatchable abort rather than a wrong answer, and no other arm sees it);
+  NON-STRING ROUTING over ints, lists, attrsets, a mixed list and a 24-element attrset
+  list, each asserted element-for-element against the incumbent expression rather than
+  merely "does not throw"; and STRICTNESS PARITY over 14 value classes via
+  `tryEval ∘ length`, the only instrument that observes how much a construction forces —
+  every arm comparing under `==` forces both sides and is structurally blind to it. The
+  load-bearing case is `unique [ (throw "BOOM") ]` ⇒ 1, not an abort. `dedupByKey` adds
+  null-keep at EQUAL content, order across a mixed keyed/unkeyed input, and stack safety
+  at 50,000 elements.
+
+- **`prelude-fidelity`** (48) — the load-bearing guard: for every nixpkgs-vendored
   utility, `prelude.X input == lib.X input` over normal and boundary inputs (empty lists,
   absent prefixes, reversed ranges, cycles). This is what keeps the vendored copies
   byte-behavior-identical to nixpkgs `lib`. (`indexOf` is additionally cross-checked
@@ -237,6 +259,42 @@ oracle the fidelity suite compares against — the lib itself pulls nothing). It
 
 There is no separate `purity` suite because purity is structural: the lib flake declares
 no inputs, so there is no `nixpkgs.lib` in scope to accidentally depend on.
+
+## Performance
+
+Two functions here have costs worth knowing before you reach for them. Both are stated in
+two variables, because one variable hides the answer: **N** is the list length and **K** the
+distinct-element count, `1 ≤ K ≤ N`.
+
+`unique` is a guarded two-path. A list of **strings** builds a key→first-index table in one
+pass and costs `2N + 3K + 3` list elements — linear in both variables. Anything else takes
+the original fold, which costs `K(K+1)/2 + K + N + 2`: **quadratic in K, not in N**, because
+`acc ++ [ x ]` copies the whole accumulator on each of the K first-sightings. The append is
+the cost, not the membership test — which is why swapping in an O(1) attrset lookup while
+keeping the append changes nothing.
+
+That makes the trade explicit rather than uniform:
+
+| shape | which path wins | measured |
+|---|---|---|
+| K ≈ N (all-distinct) | string path, by a lot | 8,010,002 → 20,003 elements at N = K = 4,000 |
+| N ≈ 2K (an endpoint union over an edge list) | string path | 23.3× fewer at N = 640, 91.9× at N = 2,560, doubling with every doubling |
+| K ≪ N (few distinct values, long list) | the fold | string path converges to exactly 2.00× more allocation, and time drifts as `log N / K` — measured +30% at N = 400,000, K = 8 |
+
+The string path is chosen whenever it applies because the K ≪ N penalty is bounded at 2.00×
+while the K ≈ N saving is unbounded and grows with input size. If you are deduplicating a
+long list with very few distinct values and it is hot, that is the one case where this
+library is knowingly slower than it was, and the reason is in the table.
+
+The **non-string fold is not a leftover**. There is no total, injective, pure value→string
+key in Nix — `builtins.toJSON` is not one, since it aborts on functions and forces deeply —
+so a non-string list has no index table to build at all, and the fold is what keeps `unique`
+total on ints, lists, attrsets and functions. The guard is per-**list**, not per-element: a
+mixed list routes whole to the fold.
+
+`dedupByKey` is linear (`5N + 5`) and frame-flat. It previously used a non-tail `[ x ] ++ go … rest` recursion, which was quadratic **in N** whatever the distinct count and, worse, spent
+one evaluator frame per element — so it aborted uncatchably past `max-call-depth` at around
+10,000 elements. Every step is now a primop, so there is no descent left to overflow.
 
 ## Provenance
 
