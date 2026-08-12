@@ -53,8 +53,20 @@ let
   # the C stack when scanning whole source files (readFile'd libraries in purity checks).
   # Split on the escaped literal instead: `split` carries no `.*` anchor and scans linearly.
   # Result is the same boolean as nixpkgs (fidelity-tested), so it is a drop-in.
-  # Metacharacter set matches nixpkgs `lib.escapeRegex` verbatim (stringToCharacters
-  # "\\[{()^$?*+.|]") so the escaped output is byte-identical — a drop-in.
+  #
+  # The set below is nixpkgs' `stringToCharacters "\\[{()^$?*+|."` — the same twelve
+  # characters, same order — and `escape` is the same `replaceStrings` fold, so the escaped
+  # output is byte-identical to `lib.escapeRegex` on every input, not merely equivalent.
+  #
+  # The set has to be the engine's metacharacter set EXACTLY, because escaping is unsound in
+  # both directions. A member left out stops being quoted and the needle silently becomes a
+  # pattern. A member added in emits `\c` for a `c` the grammar defines no escape for, which
+  # is not the literal `c` and need not be a valid regex at all: `]` is the case in point —
+  # it is already literal outside a bracket expression, and `\]` is rejected by the engine,
+  # so a set containing `]` turns every `]`-bearing needle into an abort where nixpkgs
+  # returns a boolean. `builtins.tryEval` does not contain that abort. `]` is therefore not a
+  # member and must not become one; both directions are asserted per member in
+  # `prelude-fidelity`.
   escapeRegex =
     let
       metachars = [
@@ -68,9 +80,8 @@ let
         "?"
         "*"
         "+"
-        "."
         "|"
-        "]"
+        "."
       ];
     in
     replaceStrings metachars (map (c: "\\" + c) metachars);

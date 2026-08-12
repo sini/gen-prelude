@@ -100,6 +100,31 @@ let
       "c"
     ];
   };
+
+  # ── escapeRegex's metacharacter set ──
+  # An escape-set cell answers twice: against nixpkgs on the same inputs, and against the
+  # answer written into the cell. The oracle alone would accept a needle/haystack pair gone
+  # VACUOUS under a later edit — both sides agreeing for a boring reason, having stopped
+  # exercising their member. The stated answer alone would not notice the copy drifting from
+  # what it is a copy of.
+  escCell = needle: haystack: answer: {
+    expr = {
+      prelude = p.hasInfix needle haystack;
+      nixpkgs = lib.hasInfix needle haystack;
+    };
+    expected = {
+      prelude = answer;
+      nixpkgs = answer;
+    };
+  };
+
+  # Every printable ASCII character, in code-point order. The byte-identity arm runs over
+  # this rather than over a sample: a member ADDED to the set or DROPPED from it changes this
+  # one string's escaping whichever character it is, so the arm needs no per-member case and
+  # no call into the regex engine. Its scope is single characters in this range — a
+  # hypothetical multi-character entry is not covered, and nixpkgs' set is
+  # `stringToCharacters`-derived, so no such entry exists to cover.
+  printableAscii = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
 in
 {
   flake.tests = {
@@ -894,6 +919,103 @@ in
       test-escapeRegex = {
         expr = p.escapeRegex "a.b*c{d,e}";
         expected = lib.escapeRegex "a.b*c{d,e}";
+      };
+
+      # ── the metacharacter set, member by member ──
+      #
+      # `hasInfix` is a literal substring test built on a regex primitive, so the needle's
+      # metacharacters are quoted before the engine sees them, and the quoting is correct only
+      # if the set is the engine's set EXACTLY. Both directions of error can be silent, so both
+      # are covered.
+      #
+      # DROPPING a member stops it being quoted and the needle becomes a pattern. Measured over
+      # the twelve, one drop at a time: eight flip the boolean and four leave a pattern the
+      # engine rejects. Which member is missing decides which needle notices, so a table of
+      # representative cases cannot see this and the coverage has to be per member. Each cell's
+      # comment states what its needle would MEAN unescaped — that is what makes the pair
+      # discriminate rather than sample.
+      #
+      # ADDING a member emits `\c` for a `c` the grammar defines no escape for, and that cannot
+      # be asserted the same way. For `]` the engine rejects `\]` outright, and the abort is one
+      # `builtins.tryEval` does not catch — so no cell can state it as an EXPECTATION and pass;
+      # a `hasInfix` cell can only fail, and how it fails is the runner's business rather than
+      # the assertion's (measured with `]` planted back into the set: `nix-unit` reports the
+      # three `]` arms below as ☢️ evaluation errors, and the `checks.default` asserter aborts
+      # the build). `test-escapeRegex-printable-ascii` is what makes the added member an
+      # ORDINARY red with a readable diff: it compares escaped output and never reaches the
+      # engine.
+
+      # `\` unescaped leaves a lone backslash as the whole pattern: not a valid regex.
+      test-escset-backslash = escCell "\\" "a\\b" true;
+
+      # `[` unescaped opens a bracket expression that nothing closes.
+      test-escset-open-bracket = escCell "[a" "x[ay" true;
+
+      # `{` unescaped makes `a{2}` an interval — "two a's" — which "ba{2}c" does not contain.
+      # This is the silent one: a wrong boolean, no error.
+      test-escset-open-brace = escCell "a{2}" "ba{2}c" true;
+
+      # `(` unescaped opens a group whose closing paren is escaped: unbalanced.
+      test-escset-open-paren = escCell "(a" "f(a)" true;
+
+      # `)` unescaped closes a group that was never opened.
+      test-escset-close-paren = escCell "a)" "f(a)" true;
+
+      # `^` unescaped anchors at the start, so it matches "ab" where the literal "^a" does not
+      # occur.
+      test-escset-caret = escCell "^a" "ab" false;
+
+      # `$` unescaped anchors at the end, so it matches "ba" where the literal "a$" does not
+      # occur.
+      test-escset-dollar = escCell "a$" "ba" false;
+
+      # `?` unescaped makes the preceding character optional, so `ba?` matches a bare "b".
+      test-escset-question = escCell "ba?" "b" false;
+
+      # `*` unescaped makes the preceding character repeatable-from-zero, so `ba*` matches "b".
+      test-escset-star = escCell "ba*" "b" false;
+
+      # `+` unescaped makes the preceding character repeatable-from-one, so `ba+` matches "ba".
+      test-escset-plus = escCell "ba+" "ba" false;
+
+      # `.` unescaped matches any character, so `a.c` matches "abc".
+      test-escset-dot = escCell "a.c" "abc" false;
+
+      # `|` unescaped makes the needle an alternation, so `a|b` matches a bare "a".
+      test-escset-pipe = escCell "a|b" "a" false;
+
+      # ── `]` is a NON-member, and that is the load-bearing part ──
+      #
+      # A lone `]` is already literal to the engine — a bracket expression is only open after
+      # an unescaped `[` — so quoting it is not merely unnecessary, it is wrong: `\]` is not a
+      # defined escape and the engine rejects the pattern. nixpkgs leaves `]` out for that
+      # reason, and these arms hold this copy to the same non-membership from both sides: the
+      # escaped form, and the boolean the engine then produces.
+
+      test-escapeRegex-close-bracket = {
+        expr = p.escapeRegex "]";
+        expected = lib.escapeRegex "]";
+      };
+
+      # `[` escaped and `]` not is the asymmetry stated as behaviour: `\[x]` is a valid pattern
+      # matching the three literal characters.
+      test-escapeRegex-bracket-expression = {
+        expr = p.escapeRegex "[x]";
+        expected = lib.escapeRegex "[x]";
+      };
+
+      test-hasInfix-close-bracket-match = escCell "]" "a]b" true;
+      test-hasInfix-close-bracket-nomatch = escCell "]" "axb" false;
+      test-hasInfix-bracket-expression = escCell "[x]" "y[x]z" true;
+
+      # ── the set as a whole ──
+      #
+      # Total over single printable-ASCII characters, so it fails on any member added or
+      # dropped without needing a case for that member. This is the only arm that sees an
+      # ADDED member, per the note above.
+      test-escapeRegex-printable-ascii = {
+        expr = p.escapeRegex printableAscii;
+        expected = lib.escapeRegex printableAscii;
       };
       test-imap0 = {
         expr = p.imap0 idxShow xs;
