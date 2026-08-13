@@ -694,6 +694,21 @@ in
         expr = p.iterateBounded (_: null) (st: st + 1) 0 (p.range 1 20000);
         expected = 20000;
       };
+      # The EXCEPTION to `strict`: a loop-carried field it never names is still safe when the
+      # step's own guard reads it. WHNF on the state reaches the record and not `c`, but the
+      # guard forces `c` before either branch is chosen, so the previous iteration's thunk
+      # collapses every step and the chain stays one deep instead of growing to N. It is the
+      # guard's DOMINATION of every path that builds the next state that carries this, not
+      # anything about the field. The unguarded twin — the same loop with the guard deleted —
+      # is the counterexample and cannot live here: it dies on the C stack when `c` is finally
+      # forced, an abort `tryEval` does not contain, so it is a SHELL arm in the trap table.
+      test-iterateBounded-step-guard-forces-carried = {
+        expr =
+          (p.iterateBounded (_: null) (st: if st.c >= 0 then { c = st.c + 1; } else st) { c = 0; } (
+            p.range 1 100000
+          )).c;
+        expected = 100000;
+      };
     };
 
     # Fidelity: prelude.<f> == nixpkgs lib.<f> for every vendored utility.

@@ -223,17 +223,18 @@ cd ci && nix flake check
 
 The `ci/` directory is a separate flake (it pulls nixpkgs only to supply the `lib`
 oracle the fidelity suite compares against — the lib itself pulls nothing). It runs
-**113 tests across 2 suites**:
+**114 tests across 2 suites**:
 
-- **`prelude`** (47) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
+- **`prelude`** (48) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
   `filterAttrs`, `fix`, the `toposort` retirement + its `sort` control, empty-list throw, `groupBy` basic +
   empty + collision-order stability, plus the gen-prelude-originals `dedupByKey`
   first-occurrence + null-keep + empty, `indexOf` present/absent/first, `findFirst`
   match/default, and `iterateBounded` count + ignored elements + empty bound + surplus-step
-  idling + forced/unforced pair + stack safety at 20000 iterations). The `iterateBounded`
-  arm that must FAIL — a self-applying loop at the same size — is not here: a stack overflow
-  is an uncatchable abort, so no in-language assertion observes it, and the red arm is a
-  shell command.
+  idling + forced/unforced pair + stack safety at 20000 iterations + a guarded step carrying
+  a field `strict` does not name, at 100000). The `iterateBounded` arms that must FAIL — a
+  self-applying loop at the same size, and that last loop with its guard deleted — are not
+  here: a stack overflow is an uncatchable abort, so no in-language assertion observes it,
+  and the red arms are shell commands.
 
   `unique`'s two-path carries its own group: first-occurrence ORDER (including two traps
   that a construction sorting keys rather than indices fails); STRING CONTEXT (a
