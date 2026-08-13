@@ -198,12 +198,15 @@ literal-expectation `prelude` suite rather than `prelude-fidelity`:
   `_: null` when there is nothing to force.
 
   ```nix
-  # gen-graph's Kahn loop: the node-key list is the bound, and the state's three
-  # accumulating fields are what `strict` forces.
+  # gen-graph's Kahn loop: the node-key list is the bound, and every accumulating field of
+  # the state is what `strict` forces — `emitted` by its LENGTH, because forcing the spine
+  # each step is what keeps its pending carries one deep rather than n.
   prelude.iterateBounded
-    (st: builtins.seq st.indeg (builtins.length st.emitted))
+    (st: builtins.seq st.base (builtins.seq st.residue (
+      builtins.seq st.width (builtins.seq st.ready (
+        builtins.seq st.count (builtins.length st.emitted))))))
     step
-    { indeg = indeg0; ready = sources; cursor = 0; emitted = [ ]; }
+    { base = indeg0; residue = { }; width = 0; ready = heapOfSources; emitted = [ ]; count = 0; }
     keys
   ```
 
