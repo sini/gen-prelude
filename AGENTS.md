@@ -28,7 +28,7 @@ gen-prelude holds general pure utilities only. Everything below is a *domain* co
 | Content-movement `(S,T,P,M)` edge algebra, materialization fold | `gen-edge` — "gen-edge — the content-movement contract: the (S,T,P,M) edge algebra, toposorted materialization fold, and the frozen edge-trace parity oracle" |
 | Cross-flake aspect federation over origin-labeled subgraphs | `gen-link` — "gen-link: cross-flake aspect federation over origin-labeled subgraphs" |
 | Class share: partition / contract / apply / gate | `gen-class` — "gen-class — pure-Nix class-share mechanism (partition / contract / apply / gate) for the pure-gen module system" |
-| Incremental rebuild, change propagation, AFFECTED set | `gen-rebuild` — "gen-rebuild: pure-Nix incremental rebuilder core (Mokhov rebuilder dimension)" |
+| Incremental rebuild, change propagation, AFFECTED set | `gen-memo` — "gen-memo — the incremental plane: a decision layer over the evaluator that never evaluates, only decides reuse" |
 | Variable / secret generation | `gen-vars` — "gen-vars: scope-driven, multi-target variable generation" |
 | The nixpkgs boundary; building NixOS systems; value injection | `gen-flake` — "gen-flake — the pure composition boundary of the pure-gen module ecosystem" |
 | Ecosystem wiring / two-stage lib instantiation | `gen` (hub) — `gen/flake.nix` carries **no** `description` field; the roster is `gen/lib/mkGenLibs.nix`, which binds this lib as `prelude` (`gen/lib/mkGenLibs.nix:prelude`) |
