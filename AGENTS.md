@@ -14,7 +14,8 @@ gen-prelude holds general pure utilities only. Everything below is a *domain* co
 | Priority-aware / deep module merge, `evalModules`, `mkIf`/`mkMerge`/`mkDefault` | `gen-merge` — "gen-merge — pure-Nix byte-mode module MERGE engine (evalModuleTree) for the pure-gen module system". `lib/default.nix:7-8` states the `lib.types`/`mkOption`/`evalModules` tier is out of scope here |
 | Records, search monad, `either`, intensional identity and equality | `gen-algebra` — "gen-algebra: pure Nix algebra — search monad, records, intensional functions, either" |
 | Injecting external arguments into modules | `gen-bind` — "gen-bind: module binding with external arguments for Nix" |
-| Typed registries, kinds, instances, refs, identity minting | `gen-schema` — "gen-schema: typed record registry with extension points for the pure-gen module system" |
+| Typed registries, kinds, instances, refs, and identity-key REFLECTION (`id_hash` stamping) | `gen-schema` — "gen-schema: typed record registry with extension points for the pure-gen module system" |
+| Identity MINTING — `hashIdentity`, the substrate's one authority (ADR-0016 ruling 5) | `gen-identity` — "gen-identity: the substrate's one identity mint — a bounded canonical encoding of inert values and the kind-tagged digest over it" |
 | Aspect traits, classification, composition | `gen-aspects` — "gen-aspects: aspect-oriented composition types (pure-gen, re-hosted on gen-merge)" |
 | Scope-graph evaluation, memoized and circular attributes | `gen-scope` — "gen-scope: demand-driven attribute grammar evaluator over algebraic scope graphs" |
 | Graph traversal, condensation, `phaseOrder`, **topological ordering of any kind** | `gen-graph` — "gen-graph: accessor-based graph query combinators". `gen-graph.topoOrder` is the one ordering front door; this library keeps `sort` (primitive comparator sort) and nothing above it |
