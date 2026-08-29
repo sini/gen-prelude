@@ -739,6 +739,10 @@ in
         expr = (builtins.tryEval (p.setAttrByPath [ 1 ] "v")).success;
         expected = false;
       };
+      test-getAttrByPath-non-string-segment-throws = {
+        expr = (builtins.tryEval (p.getAttrByPath [ 1 ] { })).success;
+        expected = false;
+      };
       test-getAttrByPath-missing-throws = {
         expr = (builtins.tryEval (p.getAttrByPath [ "missing" ] { })).success;
         expected = false;
@@ -755,7 +759,7 @@ in
         expected = false;
       };
       # Control on the same instrument in the same run: the happy call returns `success = true`,
-      # so the four `false`s above are discriminations and not an instrument that always says no.
+      # so the five `false`s above are discriminations and not an instrument that always says no.
       test-getAttrByPath-present-control = {
         expr = (builtins.tryEval (p.getAttrByPath [ "a" ] { a = 5; })).success;
         expected = true;

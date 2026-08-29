@@ -278,15 +278,23 @@ let
   # at each step is what makes the refusal a `throw` rather than a raw selection failure, and the
   # message names the WHOLE requested path the way nixpkgs' `abort` does — not just the segment
   # that happened to fail, which is all the naive hand-rolls can say.
+  #
+  # The path-type guard is the writer's, verbatim: the ruling scopes over THE PAIR, and a reader
+  # that falls into `foldl'`'s raw abort on a malformed path does not meet it however well the
+  # writer behaves. It also makes the not-found message total — `concatStringsSep` is only ever
+  # reached on a list of strings.
   getAttrByPath =
     path: attrs:
-    foldl' (
-      acc: seg:
-      if isAttrs acc && acc ? ${seg} then
-        acc.${seg}
-      else
-        throw "gen-prelude.getAttrByPath: attribute path '${concatStringsSep "." path}' not found"
-    ) attrs path;
+    if !isList path || !all isString path then
+      throw "gen-prelude.getAttrByPath: path must be a list of strings"
+    else
+      foldl' (
+        acc: seg:
+        if isAttrs acc && acc ? ${seg} then
+          acc.${seg}
+        else
+          throw "gen-prelude.getAttrByPath: attribute path '${concatStringsSep "." path}' not found"
+      ) attrs path;
 in
 {
   # ── builtins re-exports (aliases; zero new code) ──
