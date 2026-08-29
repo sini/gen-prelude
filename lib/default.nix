@@ -246,6 +246,47 @@ let
       unkeyed = concatMap (p: if p.name == null then [ p.value ] else [ ]) pairs;
     in
     map (i: elemAt list i) (sort (a: b: a < b) (attrValues firstIdx ++ unkeyed));
+
+  # ── path writer / reader ──
+  #
+  # The refusal path is the whole reason these live HERE rather than in a composition library.
+  # Measured against every source they replace: the three gen hand-rolled twins (gen-view
+  # `placement.nix`, gen-merge `modules.nix`, gen-class `apply.nix`) refuse by falling into a raw
+  # interpreter error — `expected a list but found a string`, `attribute 'x' missing` — which
+  # `tryEval` CANNOT catch, because only `throw`/`assert` are catchable and attribute-selection
+  # failure is not. nixpkgs is better and still uncatchable: `getAttrFromPath` names the whole
+  # dotted path but does it with `abort`. Both refusals below are `last`/`init`'s convention —
+  # NAMED and CATCHABLE — which is strictly more ADR-0025 §1 compliant than any of them.
+  #
+  # Naming note: current nixpkgs renamed `getAttrByPath` to `getAttrFromPath`. The older name is
+  # kept here for symmetry with `setAttrByPath` and with every gen-ecosystem hand-roll; a fidelity
+  # diff comparing names rather than behaviour will read that divergence and it is deliberate.
+
+  # setAttrByPath path value — the nested attrset holding `value` at `path`. `[ ]` returns `value`
+  # unchanged (the convention nixpkgs and all four hand-rolls already share). Built outward from
+  # the innermost segment: the index list descends, so each step wraps the accumulator in one more
+  # level. Fidelity is asserted on the HAPPY PATH only — the refusal deliberately diverges.
+  setAttrByPath =
+    path: value:
+    if !isList path || !all isString path then
+      throw "gen-prelude.setAttrByPath: path must be a list of strings"
+    else
+      foldl' (acc: i: { ${elemAt path i} = acc; }) value (genList (i: length path - 1 - i) (length path));
+
+  # getAttrByPath path attrs — the value at `path`, or a named throw. `[ ]` returns `attrs`
+  # unchanged, symmetric with the writer and with nixpkgs' `getAttrFromPath`. The membership test
+  # at each step is what makes the refusal a `throw` rather than a raw selection failure, and the
+  # message names the WHOLE requested path the way nixpkgs' `abort` does — not just the segment
+  # that happened to fail, which is all the naive hand-rolls can say.
+  getAttrByPath =
+    path: attrs:
+    foldl' (
+      acc: seg:
+      if isAttrs acc && acc ? ${seg} then
+        acc.${seg}
+      else
+        throw "gen-prelude.getAttrByPath: attribute path '${concatStringsSep "." path}' not found"
+    ) attrs path;
 in
 {
   # ── builtins re-exports (aliases; zero new code) ──
@@ -308,6 +349,13 @@ in
       throw "gen-prelude.init: list must not be empty"
     else
       genList (i: elemAt xs i) (length xs - 1);
+
+  # setAttrByPath path value / getAttrByPath path attrs — the nested-attrset writer and reader.
+  # Vendored from nixpkgs `lib/attrsets.nix` (where the reader is now spelled `getAttrFromPath`),
+  # but the refusal path is gen-prelude's own named, catchable `throw` — see the let block for the
+  # measurement against nixpkgs' `abort` and the three gen twins these replace.
+  inherit setAttrByPath getAttrByPath;
+
   # unique xs — order-preserving deduplication under structural `==`. See the let block above for
   # why this is a two-path and why the fold is still here.
   inherit unique;

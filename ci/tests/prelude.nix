@@ -709,6 +709,57 @@ in
           )).c;
         expected = 100000;
       };
+
+      # setAttrByPath / getAttrByPath: the empty path is the identity at both surfaces, and the
+      # refusals are CATCHABLE — the property the three gen hand-rolled twins these replace do not
+      # have (they fall into a raw interpreter error `tryEval` runs straight past).
+      test-setAttrByPath-empty-is-identity = {
+        expr = p.setAttrByPath [ ] { v = 9; };
+        expected = {
+          v = 9;
+        };
+      };
+      test-getAttrByPath-empty-is-identity = {
+        expr = p.getAttrByPath [ ] { v = 9; };
+        expected = {
+          v = 9;
+        };
+      };
+      # `tryEval` observes CATCHABLE and nothing else — the message is simply absent from its
+      # result — so these two do NOT assert that the refusal NAMES the function. That half is
+      # unassertable in-suite until den-hoag-9mo lands and rides as the SHELL arms in the trap
+      # table (`gen-prelude.setAttrByPath:` / `gen-prelude.getAttrByPath:` in stderr), on the same
+      # convention as `test-iterateBounded-*` above. Without them a build throwing `"bad path"`
+      # greens both cells below.
+      test-setAttrByPath-non-list-path-throws = {
+        expr = (builtins.tryEval (p.setAttrByPath "ab" 1)).success;
+        expected = false;
+      };
+      test-setAttrByPath-non-string-segment-throws = {
+        expr = (builtins.tryEval (p.setAttrByPath [ 1 ] "v")).success;
+        expected = false;
+      };
+      test-getAttrByPath-missing-throws = {
+        expr = (builtins.tryEval (p.getAttrByPath [ "missing" ] { })).success;
+        expected = false;
+      };
+      test-getAttrByPath-through-non-attrset-throws = {
+        expr =
+          (builtins.tryEval (
+            p.getAttrByPath [
+              "a"
+              "b"
+              "c"
+            ] { a.b = 1; }
+          )).success;
+        expected = false;
+      };
+      # Control on the same instrument in the same run: the happy call returns `success = true`,
+      # so the four `false`s above are discriminations and not an instrument that always says no.
+      test-getAttrByPath-present-control = {
+        expr = (builtins.tryEval (p.getAttrByPath [ "a" ] { a = 5; })).success;
+        expected = true;
+      };
     };
 
     # Fidelity: prelude.<f> == nixpkgs lib.<f> for every vendored utility.
@@ -1114,6 +1165,53 @@ in
       test-indexOf-absent-fidelity = {
         expr = p.indexOf xs 99;
         expected = lib.lists.findFirstIndex (y: y == 99) (-1) xs;
+      };
+      # setAttrByPath / getAttrByPath — fidelity is asserted on the HAPPY PATH only. The refusal
+      # path deliberately diverges from nixpkgs (named, catchable `throw` where nixpkgs `abort`s
+      # uncatchably) and is covered by the `prelude` suite's tryEval cells plus the trap table's
+      # shell arms instead. The reader's nixpkgs counterpart is `getAttrFromPath`: upstream renamed
+      # it, and `lib ? getAttrByPath` is `false` in the pinned rev, so the name is not the oracle.
+      # DEPTH 3 IS THE DISCRIMINATING CASE and depths 0 and 1 are not: a reversed-nesting build
+      # agrees with nixpkgs on both shallow depths and only diverges here.
+      test-setAttrByPath-depth0-fidelity = {
+        expr = p.setAttrByPath [ ] 9;
+        expected = lib.setAttrByPath [ ] 9;
+      };
+      test-setAttrByPath-depth1-fidelity = {
+        expr = p.setAttrByPath [ "a" ] 9;
+        expected = lib.setAttrByPath [ "a" ] 9;
+      };
+      test-setAttrByPath-depth3-fidelity = {
+        expr = p.setAttrByPath [
+          "a"
+          "b"
+          "c"
+        ] 9;
+        expected = lib.setAttrByPath [
+          "a"
+          "b"
+          "c"
+        ] 9;
+      };
+      test-getAttrByPath-depth0-fidelity = {
+        expr = p.getAttrByPath [ ] attrs;
+        expected = lib.getAttrFromPath [ ] attrs;
+      };
+      test-getAttrByPath-depth1-fidelity = {
+        expr = p.getAttrByPath [ "a" ] attrs;
+        expected = lib.getAttrFromPath [ "a" ] attrs;
+      };
+      test-getAttrByPath-depth3-fidelity = {
+        expr = p.getAttrByPath [
+          "a"
+          "b"
+          "c"
+        ] { a.b.c = 7; };
+        expected = lib.getAttrFromPath [
+          "a"
+          "b"
+          "c"
+        ] { a.b.c = 7; };
       };
     };
   };

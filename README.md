@@ -106,7 +106,7 @@ attrset — no arguments, since the lib depends on nothing.
 ## API Reference
 
 Every name below is a top-level member of the lib attrset (verified against
-`nix eval .#lib --apply builtins.attrNames`). 51 members total.
+`nix eval .#lib --apply builtins.attrNames`). 53 members total.
 
 ### builtins re-exports
 
@@ -132,6 +132,15 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
 - `optionalString cond s` — `s` if `cond` else `""`.
 - `last xs` — final element (throws on `[ ]`).
 - `init xs` — all but the final element (throws on `[ ]`).
+- `setAttrByPath path value` — the nested attrset holding `value` at `path`; `[ ]` returns
+  `value` unchanged. Throws `gen-prelude.setAttrByPath: path must be a list of strings` when
+  `path` is not one.
+- `getAttrByPath path attrs` — the value at `path`; `[ ]` returns `attrs` unchanged. Throws
+  `gen-prelude.getAttrByPath: attribute path '<dotted>' not found` on a missing key or a
+  non-attrset encountered mid-path, naming the whole requested path rather than the segment
+  that failed. nixpkgs spells this one `getAttrFromPath` since its rename; the older name is
+  kept for symmetry with the writer. Both refusals are **named and catchable**, where nixpkgs'
+  is an uncatchable `abort` — fidelity for this pair is asserted on the happy path only.
 - `unique xs` — order-preserving deduplication under structural `==`, first occurrence
   kept. Total on every value: ints, lists, attrsets and functions all work. Internally a
   guarded two-path — a list of strings routes to a linear key→first-index table, anything
