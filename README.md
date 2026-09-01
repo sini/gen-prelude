@@ -15,7 +15,8 @@ Dependency class: **A (pure)** — the lib takes no flake inputs and imports not
 `nixpkgs.lib`; it is the nixpkgs-lib-free base every other pure gen lib depends on. The
 lib flake carries zero inputs, so a consumer's lock gains no transitive nixpkgs
 dependency from pulling gen-prelude in. Purity is enforced structurally (the flake has
-no inputs to draw a `lib` from), and every utility vendored from nixpkgs is held
+no inputs to draw a `lib` from) and that structure is itself asserted, by the `purity`
+suite, rather than left as an argument; every utility vendored from nixpkgs is held
 byte-behavior-identical to its counterpart by the `prelude-fidelity` test suite. (The
 few gen-prelude-originals with no nixpkgs counterpart — `indexOf`, `dedupByKey` — are
 covered by the literal-expectation `prelude` suite instead; see [Provenance](#provenance).)
@@ -235,9 +236,9 @@ cd ci && nix flake check
 
 The `ci/` directory is a separate flake (it pulls nixpkgs only to supply the `lib`
 oracle the fidelity suite compares against — the lib itself pulls nothing). It runs
-**114 tests across 2 suites**:
+**133 tests across 3 suites**:
 
-- **`prelude`** (48) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
+- **`prelude`** (56) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
   `filterAttrs`, `fix`, the `toposort` retirement + its `sort` control, empty-list throw, `groupBy` basic +
   empty + collision-order stability, plus the gen-prelude-originals `dedupByKey`
   first-occurrence + null-keep + empty, `indexOf` present/absent/first, `findFirst`
@@ -261,7 +262,7 @@ oracle the fidelity suite compares against — the lib itself pulls nothing). It
   null-keep at EQUAL content, order across a mixed keyed/unkeyed input, and stack safety
   at 50,000 elements.
 
-- **`prelude-fidelity`** (66) — the load-bearing guard: for every nixpkgs-vendored
+- **`prelude-fidelity`** (72) — the load-bearing guard: for every nixpkgs-vendored
   utility, `prelude.X input == lib.X input` over normal and boundary inputs (empty lists,
   absent prefixes, reversed ranges, cycles). This is what keeps the vendored copies
   byte-behavior-identical to nixpkgs `lib`. (`indexOf` is additionally cross-checked
@@ -279,8 +280,25 @@ oracle the fidelity suite compares against — the lib itself pulls nothing). It
   `]` to being a NON-member from both sides — escaping it emits `\]`, which the regex engine
   rejects, so the needle aborts where nixpkgs answers, and `tryEval` does not catch it.
 
-There is no separate `purity` suite because purity is structural: the lib flake declares
-no inputs, so there is no `nixpkgs.lib` in scope to accidentally depend on.
+- **`purity`** (5) — purity as a CHECKED property rather than a structural argument. This
+  suite used to be absent, and the reason given was that the lib flake declares no inputs,
+  so there is no `nixpkgs.lib` in scope to accidentally depend on. That argument is sound
+  and it rests on a premise nothing asserted: an `inputs` attribute added to the root
+  `flake.nix` puts `nixpkgs` back in scope, and no test saw it.
+  `test-flake-declares-no-inputs` is that premise, written down as the flake's own
+  attribute names — this is the load-bearing cell, and the token scan over `lib/**.nix`
+  plus the root `default.nix` is the second line behind it.
+
+  The three remaining cells are what make an empty violation list mean something. The
+  detector is run over the same corpus with one synthetic tether appended and must produce
+  exactly that violation; `builtins.readDir lib/` is pinned so a file — or a subdirectory
+  the flat read would not descend into — arrives as a red rather than as unscanned code;
+  and the scan is run over the RAW text as well, where it must fire, because this library's
+  own header truly states it is nixpkgs-lib-free and names the `lib.types`/`mkOption`/
+  `evalModules` tier. Comment-stripping is what makes the green above a statement about
+  code, and that cell is where it is said. The scanner is this library's own `hasInfix`
+  scanning this library, so the detector cell is also what stands between a `hasInfix`
+  broken to always answer false and a clean-looking report.
 
 ## Performance
 
