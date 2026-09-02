@@ -31,7 +31,7 @@ gen-prelude holds general pure utilities only. Everything below is a *domain* co
 | Class share: partition / contract / apply / gate | `gen-class` — "gen-class — pure-Nix class-share mechanism (partition / contract / apply / gate) for the pure-gen module system" |
 | Incremental rebuild, change propagation, AFFECTED set | `gen-memo` — "gen-memo — the incremental plane: a decision layer over the evaluator that never evaluates, only decides reuse" |
 | Variable / secret generation | `gen-vars` — "gen-vars: scope-driven, multi-target variable generation" |
-| The nixpkgs boundary; building NixOS systems; value injection | `gen-flake` — "gen-flake — the pure composition boundary of the pure-gen module ecosystem" |
+| The nixpkgs boundary; building NixOS systems; value injection | The hub's `lib.compose` / interim `flakeModules.default` (INTERIM, not yet ADR-0027) — **`gen-flake` DISSOLVED rather than moving as one library.** ADR-0031 F2/F3 sent the compose S2 core to the hub, warm/override/trace to `gen-memo`, the projection + `realize` to `gen-delivery`, and inject/terminals to the crossing's Adapter set. The repo orphans as reference; take no new dependency on it |
 | Ecosystem wiring / two-stage lib instantiation | `gen` (hub) — `gen/flake.nix` carries **no** `description` field; the roster is `gen/lib/mkGenLibs.nix`, which binds this lib as `prelude` (`gen/lib/mkGenLibs.nix:prelude`) |
 | `hasSuffix`, `removeSuffix`, `zipAttrsWith`, `concatStrings` | **No gen owner.** Absent from gen-prelude and named nowhere in any `gen-*/lib` tree (see traps). `recursiveUpdate` and `splitString` appear only as private `let` bindings inside `gen-algebra/lib/rec.nix`, `gen-merge/lib/modules.nix` and `gen-class/lib/apply.nix` — not exports |
 
