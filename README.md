@@ -51,21 +51,21 @@ gen-dispatch, and others — build on exactly this surface.
 
 ## Gen Ecosystem
 
-| Library | Role |
-|---------|------|
-| [gen-prelude](https://github.com/sini/gen-prelude) | **This lib** — Pure nixpkgs-lib-free utility base (builtins re-exports + vendored lib utils) |
-| [gen-algebra](https://github.com/sini/gen-algebra) | Pure primitives (record, search monad, either, intensional identity) |
-| [gen-types](https://github.com/sini/gen-types) | Clean-room MIT structural type checker (leaf/poly checkers; `verify: v → null\|err`) |
-| [gen-merge](https://github.com/sini/gen-merge) | Byte-mode module merge engine (`evalModuleTree`, byte-identical to nixpkgs `lib.evalModules` over the priority subset) |
-| [gen-schema](https://github.com/sini/gen-schema) | Typed registries (kinds, instances, collections, refs); re-hosted on gen-merge |
-| [gen-aspects](https://github.com/sini/gen-aspects) | Aspect type system (traits, classification, dispatch); re-hosted on gen-merge |
-| [gen-scope](https://github.com/sini/gen-scope) | HOAG scope-graph evaluator (demand-driven, \_eval memoization, circular attributes) |
-| [gen-graph](https://github.com/sini/gen-graph) | Accessor-based graph query combinators (traversal, condensation, phaseOrder) |
-| [gen-select](https://github.com/sini/gen-select) | Selector algebra (pattern matching over graph positions) |
-| [gen-bind](https://github.com/sini/gen-bind) | Module binding (inject external args into NixOS modules) |
-| [gen-dispatch](https://github.com/sini/gen-dispatch) | Relational rule dispatch STEP (stratified phases, conflict resolution) |
-| [gen-memo](https://github.com/sini/gen-memo) | The incremental plane — decides reuse, never evaluates (change propagation, AFFECTED set) |
-| [gen-vars](https://github.com/sini/gen-vars) | Pure-Nix vars/secrets (den-agnostic) |
+| Library                                              | Role                                                                                                                   |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| [gen-prelude](https://github.com/sini/gen-prelude)   | **This lib** — Pure nixpkgs-lib-free utility base (builtins re-exports + vendored lib utils)                           |
+| [gen-algebra](https://github.com/sini/gen-algebra)   | Pure primitives (record, search monad, either, intensional identity)                                                   |
+| [gen-types](https://github.com/sini/gen-types)       | Clean-room MIT structural type checker (leaf/poly checkers; `verify: v → null\|err`)                                   |
+| [gen-merge](https://github.com/sini/gen-merge)       | Byte-mode module merge engine (`evalModuleTree`, byte-identical to nixpkgs `lib.evalModules` over the priority subset) |
+| [gen-schema](https://github.com/sini/gen-schema)     | Typed registries (kinds, instances, collections, refs); re-hosted on gen-merge                                         |
+| [gen-aspects](https://github.com/sini/gen-aspects)   | Aspect type system (traits, classification, dispatch); re-hosted on gen-merge                                          |
+| [gen-scope](https://github.com/sini/gen-scope)       | HOAG scope-graph evaluator (demand-driven, \_eval memoization, circular attributes)                                    |
+| [gen-graph](https://github.com/sini/gen-graph)       | Accessor-based graph query combinators (traversal, condensation, phaseOrder)                                           |
+| [gen-select](https://github.com/sini/gen-select)     | Selector algebra (pattern matching over graph positions)                                                               |
+| [gen-bind](https://github.com/sini/gen-bind)         | Module binding (inject external args into NixOS modules)                                                               |
+| [gen-dispatch](https://github.com/sini/gen-dispatch) | Relational rule dispatch STEP (stratified phases, conflict resolution)                                                 |
+| [gen-memo](https://github.com/sini/gen-memo)         | The incremental plane — decides reuse, never evaluates (change propagation, AFFECTED set)                              |
+| [gen-vars](https://github.com/sini/gen-vars)         | Pure-Nix vars/secrets (den-agnostic)                                                                                   |
 
 ## Usage
 
@@ -313,11 +313,11 @@ keeping the append changes nothing.
 
 That makes the trade explicit rather than uniform:
 
-| shape | which path wins | measured |
-|---|---|---|
-| K ≈ N (all-distinct) | string path, by a lot | 8,010,002 → 20,003 elements at N = K = 4,000 |
-| N ≈ 2K (an endpoint union over an edge list) | string path | 23.3× fewer at N = 640, 91.9× at N = 2,560, doubling with every doubling |
-| K ≪ N (few distinct values, long list) | the fold | string path converges to exactly 2.00× more allocation, and time drifts as `log N / K` — measured +29.5% at N = 400,000, K = 8 |
+| shape                                        | which path wins       | measured                                                                                                                       |
+| -------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| K ≈ N (all-distinct)                         | string path, by a lot | 8,010,002 → 20,003 elements at N = K = 4,000                                                                                   |
+| N ≈ 2K (an endpoint union over an edge list) | string path           | 23.3× fewer at N = 640, 91.9× at N = 2,560, doubling with every doubling                                                       |
+| K ≪ N (few distinct values, long list)       | the fold              | string path converges to exactly 2.00× more allocation, and time drifts as `log N / K` — measured +29.5% at N = 400,000, K = 8 |
 
 The string path is chosen whenever it applies because the K ≪ N penalty is bounded at 2.00×
 while the K ≈ N saving is unbounded and grows with input size. If you are deduplicating a
@@ -342,12 +342,12 @@ The `builtins` members are direct
 re-exports of the Nix `builtins` set. The vendored utilities are copied
 behavior-identically from `nixpkgs` `lib`:
 
-| Utility | nixpkgs source |
-|---------|----------------|
-| `genAttrs`, `filterAttrs`, `mapAttrsToList`, `nameValuePair`, `optionalAttrs` | `lib/attrsets.nix` |
-| `optional`, `last`, `init`, `unique`, `imap0`, `range`, `findFirst` | `lib/lists.nix` |
-| `optionalString`, `concatMapStringsSep`, `hasPrefix`, `removePrefix` | `lib/strings.nix` |
-| `fix`, `max` | `lib/trivial.nix` / `lib/fixed-points.nix` |
+| Utility                                                                       | nixpkgs source                             |
+| ----------------------------------------------------------------------------- | ------------------------------------------ |
+| `genAttrs`, `filterAttrs`, `mapAttrsToList`, `nameValuePair`, `optionalAttrs` | `lib/attrsets.nix`                         |
+| `optional`, `last`, `init`, `unique`, `imap0`, `range`, `findFirst`           | `lib/lists.nix`                            |
+| `optionalString`, `concatMapStringsSep`, `hasPrefix`, `removePrefix`          | `lib/strings.nix`                          |
+| `fix`, `max`                                                                  | `lib/trivial.nix` / `lib/fixed-points.nix` |
 
 The `prelude-fidelity` test suite asserts each utility stays
 behavior-identical to its `nixpkgs.lib` original, so the vendoring cannot silently
@@ -356,11 +356,11 @@ drift.
 Three members are **gen-prelude-original** (no nixpkgs origin), so they are held by the
 literal-expectation `prelude` suite rather than `prelude-fidelity`:
 
-| Utility | origin |
-|---------|--------|
-| `indexOf` | gen-prelude-original — small list helper (den-hoag hand-roll shape); shares the internal stack-safe `findFirstIndex` scan (`lib/lists.nix:575`) that also backs `findFirst` |
-| `iterateBounded` | gen-prelude-original — the stack-safe loop encoding for state a scan cannot carry; nothing was vendored, so there is no fidelity oracle to hold it against |
-| `dedupByKey` | vendored from den-hoag `lib/dedup-by-key.nix` (itself the port of v1 scope-walk `dedupByKey`); null-keep semantics have no `nixpkgs.lib` counterpart |
+| Utility          | origin                                                                                                                                                                      |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `indexOf`        | gen-prelude-original — small list helper (den-hoag hand-roll shape); shares the internal stack-safe `findFirstIndex` scan (`lib/lists.nix:575`) that also backs `findFirst` |
+| `iterateBounded` | gen-prelude-original — the stack-safe loop encoding for state a scan cannot carry; nothing was vendored, so there is no fidelity oracle to hold it against                  |
+| `dedupByKey`     | vendored from den-hoag `lib/dedup-by-key.nix` (itself the port of v1 scope-walk `dedupByKey`); null-keep semantics have no `nixpkgs.lib` counterpart                        |
 
 ## License
 
