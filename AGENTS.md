@@ -1,5 +1,7 @@
 # gen-prelude — agent capability sheet
 
+> **Library class: reference-grade.** Deletion requires a domain argument — wrong abstraction, subsumption by another construct, or theory-unsoundness; a usage count is inadmissible as a deletion ground (P7, 2026-08-17).
+
 ## Scope
 
 The zero-dependency utility base of the gen ecosystem: `builtins` re-exports plus the pure list/attrset/string helpers the substrate uses, vendored behaviour-identically from `nixpkgs.lib`, so every other pure gen library can drop `nixpkgs.lib` from its closure.
