@@ -235,7 +235,11 @@ cd ci && nix flake check
 
 The `ci/` directory is a separate flake (it pulls nixpkgs only to supply the `lib`
 oracle the fidelity suite compares against — the lib itself pulls nothing). It runs
-**133 tests across 3 suites**:
+**138 tests across 4 suites** (`nix-unit --flake ./ci#tests` ⇒ `138/138 successful`, `60dc6bf`):
+
+- **`entry`** (1) — the standalone-leaf check: the root `default.nix` is a nullary function
+  whose `{ }` call forwards the flake's published surface, the uniform entry call across the
+  roster regardless of whether a given library takes a dependency (`den-hoag-iev2q`).
 
 - **`prelude`** (56) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
   `filterAttrs`, `fix`, the `toposort` retirement + its `sort` control, empty-list throw, `groupBy` basic +
@@ -279,7 +283,7 @@ oracle the fidelity suite compares against — the lib itself pulls nothing). It
   `]` to being a NON-member from both sides — escaping it emits `\]`, which the regex engine
   rejects, so the needle aborts where nixpkgs answers, and `tryEval` does not catch it.
 
-- **`purity`** (5) — purity as a CHECKED property rather than a structural argument. This
+- **`purity`** (9) — purity as a CHECKED property rather than a structural argument. This
   suite used to be absent, and the reason given was that the lib flake declares no inputs,
   so there is no `nixpkgs.lib` in scope to accidentally depend on. That argument is sound
   and it rests on a premise nothing asserted: an `inputs` attribute added to the root
@@ -288,14 +292,22 @@ oracle the fidelity suite compares against — the lib itself pulls nothing). It
   attribute names — this is the load-bearing cell, and the token scan over `lib/**.nix`
   plus the root `default.nix` is the second line behind it.
 
-  The three remaining cells are what make an empty violation list mean something. The
+  Four more cells are what make an empty violation list mean something. The
   detector is run over the same corpus with one synthetic tether appended and must produce
   exactly that violation; `builtins.readDir lib/` is pinned so a file — or a subdirectory
   the flat read would not descend into — arrives as a red rather than as unscanned code;
-  and the scan is run over the RAW text as well, where it must fire, because this library's
-  own header truly states it is nixpkgs-lib-free and names the `lib.types`/`mkOption`/
-  `evalModules` tier. Comment-stripping is what makes the green above a statement about
-  code, and that cell is where it is said. The scanner is this library's own `hasInfix`
+  the labels are shown to carry this repository's live text rather than a constant
+  (`test-scan-reads-are-live`); and the scan is run over the RAW text as well, where it must
+  fire, because this library's own header truly states it is nixpkgs-lib-free and names the
+  `lib.types`/`mkOption`/`evalModules` tier.
+
+  The remaining three cells guard the comment-strip itself, which is what makes the green
+  above a statement about code rather than about text already blinded: the strip's premise
+  holds of what was actually read from disk (`test-strip-premise-holds`); the premise
+  predicate is shown capable of saying no, over a literal unseverable from the tree
+  (`test-strip-premise-scan-is-live`); and multiline string blocks — which a line-local
+  premise cannot see across — are declared rather than trusted in silence
+  (`test-strip-premise-multiline-strings`). The scanner is this library's own `hasInfix`
   scanning this library, so the detector cell is also what stands between a `hasInfix`
   broken to always answer false and a clean-looking report.
 
