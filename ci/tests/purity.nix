@@ -106,6 +106,18 @@ let
     "mkOption" # module-system tier
   ];
 
+  # The live counterpart to `forbidden`: the name this library reaches for where a tether would reach
+  # for nixpkgs lib. gen-prelude declares no inputs at all and its invariant is stated at the top of
+  # this file as `builtins` AND NOTHING ELSE, so the token is not merely present — it is the WHOLE of
+  # what this source may name, the exact dual of the forbidden list above. One source is outside the
+  # list and it is outside it BY CONSTRUCTION: the root `default.nix`, whose entire body is
+  # `{ }: import ./lib` and which therefore names no builtin. That exclusion is what gives the
+  # assertion its teeth — the expected list is a PROPER SUBSET of the scanned set, so a read
+  # returning one fixed text for both files lands outside it either way: without the token the list
+  # collapses to empty, with it the list swells to both sources.
+  liveToken = "builtins";
+  liveReads = map (src: src.name) (lib.filter (src: genPrelude.hasInfix liveToken src.code) sources);
+
   scan =
     srcs:
     lib.concatMap (
@@ -137,6 +149,19 @@ in
     expected = {
       "default.nix" = "regular";
     };
+  };
+
+  # And that the labels carry their files' text. The cell above pins membership — WHICH files the
+  # walk found — and is silent on content: a read that handed every entry one fixed string would
+  # satisfy it exactly, and a live `lib.foo` sitting in the real library file would pass through
+  # every other cell here at exit 0. This is the same exact-list shape asked of a token that is
+  # genuinely present rather than genuinely absent, so the reads are shown to carry this
+  # repository's source and not a constant. Its subject is the label list of `sources`, which the
+  # `readDir` cell above does not itself enumerate — a count-preserving swap, one member's bytes
+  # replaced by the other's, leaves that cell GREEN and reds this one.
+  flake.tests.purity.test-scan-reads-are-live = {
+    expr = liveReads;
+    expected = [ "lib/default.nix" ];
   };
 
   # THE DEPENDENCY BUDGET IS ZERO, pinned as the flake's own attribute names rather than as a token
