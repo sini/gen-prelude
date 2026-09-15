@@ -239,7 +239,7 @@ oracle the fidelity suite compares against — the lib itself pulls nothing). It
 
 - **`entry`** (1) — the standalone-leaf check: the root `default.nix` is a nullary function
   whose `{ }` call forwards the flake's published surface, the uniform entry call across the
-  roster regardless of whether a given library takes a dependency (`den-hoag-iev2q`).
+  roster regardless of whether a given library takes a dependency.
 
 - **`prelude`** (56) — readable literal-expectation sanity checks (`genAttrs`, `unique`,
   `filterAttrs`, `fix`, the `toposort` retirement + its `sort` control, empty-list throw, `groupBy` basic +
