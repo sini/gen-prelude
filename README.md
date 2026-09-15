@@ -99,8 +99,9 @@ in
 prelude.unique [ 3 1 1 2 3 ]  # => [ 3 1 2 ]
 ```
 
-`import ./lib` (equivalently `import ./default.nix`) evaluates directly to the lib
-attrset — no arguments, since the lib depends on nothing.
+`import ./lib` evaluates directly to the lib attrset. The root entry is a nullary function
+over it — `import ./default.nix { }` — so the empty call, not the bare import, is the
+non-flake entry text.
 
 ## API Reference
 

@@ -39,7 +39,7 @@ gen-prelude holds general pure utilities only. Everything below is a *domain* co
 
 ## Exports
 
-Entry: `inputs.gen-prelude.lib` (flake). Root `default.nix` and `import ./lib` are the same bare value — **not** a function, so it takes no dependency argument. The flake declares zero inputs (`flake.nix:4-6`), so pulling gen-prelude in adds nothing to a consumer's lock. The namespace is **flat**: no export is itself an attrset.
+Entry: `inputs.gen-prelude.lib` (flake). `import ./lib` is the bare value; root `default.nix` is a nullary function over it — `import ./. { }` (den-hoag-iev2q) — so it still takes no dependency argument, just an empty one. The flake declares zero inputs (`flake.nix:4-6`), so pulling gen-prelude in adds nothing to a consumer's lock. The namespace is **flat**: no export is itself an attrset.
 
 **`builtins` re-exports** — aliases, zero new code (`lib/default.nix` § *builtins re-exports*, the `inherit` block in the exported attrset). Semantics are exactly those of the corresponding `builtins.*`. Note the let-block `inherit (builtins)` is wider than this list: `replaceStrings` and `split` are pulled in for `escapeRegex` / `hasInfix` and deliberately **not** re-exported.
 

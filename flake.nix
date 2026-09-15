@@ -16,12 +16,12 @@
       #
       # ★ THE SURFACE IS THE ROOT, NOT `./lib`. `./.` and `./lib` were two independent constructions
       # of one value and so free to disagree; there is ONE construction site now. gen-prelude has
-      # zero dependencies, so its root stays the bare `import ./lib` — a value, with no bag to read
-      # and nothing to pin — and the two entry paths are the same expression rather than merely
-      # agreeing today.
+      # zero dependencies, but its root is a NULLARY FUNCTION rather than a bare value
+      # (den-hoag-iev2q): `import ./. { }` is the one call text every roster member answers to,
+      # leaf or not, and the two entry paths stay the same expression once applied.
       lib =
         let
-          surface = import ./.;
+          surface = import ./. { };
         in
         builtins.deepSeq (builtins.mapAttrs (_: builtins.typeOf) surface) surface;
     };
