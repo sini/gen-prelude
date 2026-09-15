@@ -13,9 +13,15 @@
       # makes the green mean "the surface evaluates", and a library needs no new output name for it.
       # The depth is each member's WHNF and no deeper: a retirement tombstone is a published `throw`
       # by design (gen-scope's `buildNodes`), so a deep force is red on a healthy tree.
+      #
+      # ★ THE SURFACE IS THE ROOT, NOT `./lib`. `./.` and `./lib` were two independent constructions
+      # of one value and so free to disagree; there is ONE construction site now. gen-prelude has
+      # zero dependencies, so its root stays the bare `import ./lib` — a value, with no bag to read
+      # and nothing to pin — and the two entry paths are the same expression rather than merely
+      # agreeing today.
       lib =
         let
-          surface = import ./lib;
+          surface = import ./.;
         in
         builtins.deepSeq (builtins.mapAttrs (_: builtins.typeOf) surface) surface;
     };
