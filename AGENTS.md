@@ -77,11 +77,12 @@ substring  tail
 
 **gen-prelude originals** (no `nixpkgs.lib` counterpart; covered by the literal-expectation `prelude` suite, not `prelude-fidelity`).
 
-| Export           | Signature                                                                                                                                                                                         |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `indexOf`        | `[a] -> a -> int` — **list first**, then needle; `-1` if absent                                                                                                                                   |
-| `dedupByKey`     | `(a -> string\|null) -> [a] -> [a]` — first-occurrence-wins, order-preserving; a `null` key is always kept and never entered into `seen`                                                          |
-| `iterateBounded` | `(s -> b) -> (s -> s) -> s -> [a] -> s` (strict, step, init, bound) — `step` once per element of `bound`, **elements ignored, only the length read**; `strict` forced on every intermediate state |
+| Export           | Signature                                                                                                                                                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `indexOf`        | `[a] -> a -> int` — **list first**, then needle; `-1` if absent                                                                                                                                                                   |
+| `dedupByKey`     | `(a -> string\|null) -> [a] -> [a]` — first-occurrence-wins, order-preserving; a `null` key is always kept and never entered into `seen`                                                                                          |
+| `iterateBounded` | `(s -> b) -> (s -> s) -> s -> [a] -> s` (strict, step, init, bound) — `step` once per element of `bound`, **elements ignored, only the length read**; `strict` forced on every intermediate state                                 |
+| `renderValue`    | `a -> string` — total rendering of a caller value inside a refusal: scalars and string lists as JSON, a non-finite float and a path by `toString`, else `<a T>`; forces to WHNF (a list's elements under `tryEval`) and no deeper |
 
 **Internal, not exported**: `findFirstIndex` (the shared stack-safe scan under `findFirst`/`indexOf`), `listDfs`, `reverseList`. `replaceStrings` and `split` are inherited from `builtins` in the `let` block for internal use only and are **not** re-exported.
 

@@ -629,6 +629,103 @@ in
         expected = 0;
       };
 
+      # renderValue: one cell per arm. Scalars and name lists render in full (JSON), a
+      # non-finite float and a path by `toString`, and everything else as `<a T>` — including a
+      # list whose element THROWS (the `tryEval` arm) and the sets `toJSON` or interpolation would
+      # abort or overflow on (cyclic, a derivation, `outPath`, `__toString`).
+      test-renderValue-scalars = {
+        expr = map p.renderValue [
+          "x"
+          "a\"b\nc"
+          42
+          true
+          null
+        ];
+        expected = [
+          "\"x\""
+          "\"a\\\"b\\nc\""
+          "42"
+          "true"
+          "null"
+        ];
+      };
+      test-renderValue-floats = {
+        expr = map p.renderValue [
+          1.5
+          (1.0e308 * 10.0)
+          (-1.0e308 * 10.0)
+        ];
+        expected = [
+          "1.5"
+          "inf"
+          "-inf"
+        ];
+      };
+      test-renderValue-path = {
+        expr = p.renderValue /tmp;
+        expected = "/tmp";
+      };
+      test-renderValue-lists = {
+        expr = map p.renderValue [
+          [
+            "a"
+            "b"
+          ]
+          [ ]
+          [
+            1
+            2
+          ]
+        ];
+        expected = [
+          ''["a","b"]''
+          "[]"
+          "<a list>"
+        ];
+      };
+      test-renderValue-list-with-throwing-element = {
+        expr = p.renderValue [
+          "a"
+          (throw "an element that throws must not replace the refusal")
+        ];
+        expected = "<a list>";
+      };
+      test-renderValue-functions = {
+        expr = map p.renderValue [
+          (x: x)
+          builtins.head
+        ];
+        expected = [
+          "<a lambda>"
+          "<a lambda>"
+        ];
+      };
+      test-renderValue-sets = {
+        expr = map p.renderValue [
+          (
+            let
+              s = {
+                a = s;
+              };
+            in
+            s
+          )
+          (derivation {
+            name = "renderValue-probe";
+            builder = "/bin/sh";
+            system = "x86_64-linux";
+          })
+          { outPath = "inc"; }
+          { __toString = _: "inc"; }
+        ];
+        expected = [
+          "<a set>"
+          "<a set>"
+          "<a set>"
+          "<a set>"
+        ];
+      };
+
       # findFirst: readable literal checks (fidelity below also covers it).
       test-findFirst-match = {
         expr = p.findFirst (x: x > 2) 0 [

@@ -394,6 +394,48 @@ in
   # The stack-safe encoding for a loop that carries state, as findFirstIndex is for a scan.
   # gen-prelude-original (no nixpkgs equivalent) → literal-expectation tested, not fidelity.
   inherit iterateBounded;
+
+  # renderValue v — TOTAL RENDERING OF A CALLER VALUE INSIDE A REFUSAL. The one shared renderer
+  # (den-hoag-shared-refusal-renderer-6wtos) behind gen-scope's `resolveClaims` refusals, every
+  # gen-view `refuse` site and gen-merge's conflict refusal. A refusal is built at the moment
+  # something has already gone wrong, and it renders exactly the value that was wrong: `toJSON`
+  # aborts on a function at any depth and overflows on a cyclic value, and string interpolation
+  # aborts on anything that is not a string, all three past `tryEval`. Scalars and name lists render
+  # in full, because those are the shapes a caller acts on; anything else is named by its type,
+  # `<a T>`, which reads as a noun phrase inside the refusal's sentence.
+  #
+  # Two arms keep scalar information `toJSON` would lose or mangle. A FINITE float renders by
+  # `toJSON` (`1.5`, `0.30000000000000004`, `1e-10`); a non-finite one by `toString` (`inf`,
+  # `-inf`, `-nan`), because `toJSON` renders all three as `null`, and `toString` of a finite float
+  # rounds to six places. A path renders by `toString`, because `toJSON` of a path copies it to the
+  # store.
+  #
+  # CONTRACT. It forces the value to WHNF and, for a list, each element to WHNF under `tryEval`, and
+  # never deeper — so a cyclic value, a set with a throwing field and a set holding functions all
+  # render as `<a set>`. It returns a string for every value whose WHNF evaluates. A list element
+  # whose WHNF throws catchably renders the whole list as `<a list>` (the `tryEval` is gen-harness
+  # `fail-message.nix`'s third defence, den-hoag-t9ug0). A value or element whose WHNF aborts
+  # uncatchably (`abort`, `1 + "a"`, a missing attribute) still aborts, and a top-level `throw` or
+  # failed `assert` propagates as the value's own error: no render can observe a value it cannot
+  # reach. It RENDERS and never ADDRESSES: two different lambdas render alike, which a message may
+  # do and a key may not.
+  #
+  # COST. Callers reach it only inside a `throw` string, so its element pass costs nothing on any
+  # success path.
+  # gen-prelude-original (no nixpkgs equivalent) → literal-expectation tested, not fidelity.
+  renderValue =
+    v:
+    if builtins.isString v || builtins.isInt v || builtins.isBool v || v == null then
+      builtins.toJSON v
+    else if builtins.isFloat v then
+      (if v - v == 0.0 then builtins.toJSON v else toString v)
+    else if builtins.isPath v then
+      toString v
+    else if builtins.isList v && (builtins.tryEval (builtins.all builtins.isString v)).value then
+      builtins.toJSON v
+    else
+      "<a ${builtins.typeOf v}>";
+
   filterAttrs =
     pred: a:
     listToAttrs (
