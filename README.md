@@ -230,8 +230,14 @@ literal-expectation `prelude` suite rather than `prelude-fidelity`:
 ## Testing
 
 ```sh
-cd ci && nix flake check
+nix develop ./ci --command ci   # guarded
+nix flake check ./ci            # the gates too; unguarded
 ```
+
+`ci` refuses when anything under a declared read root is unknown to git — any extension or name,
+`_`-prefixed included — and the remedy is `git add` or a move. The bare `nix-unit --flake ./ci#tests`
+and `nix flake check ./ci` are unguarded: they read a git-filtered copy of the tree, so an untracked
+cell is silently absent and the run stays green.
 
 The `ci/` directory is a separate flake (it pulls nixpkgs only to supply the `lib`
 oracle the fidelity suite compares against — the lib itself pulls nothing). It runs
