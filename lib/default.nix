@@ -349,7 +349,11 @@ let
   #   member's `isCanonical v k` — "v is the canonical entry `entries.${k}`" — which this library
   #   cannot know: it reads the member's own layout (gen-schema: stamp equality and identity-key
   #   value equality, den-hoag-a4158). It must answer a bool or throw, and it mints nothing
-  #   (ADR-0034: a comparison mints nothing). The first candidate that passes is the answer.
+  #   (ADR-0034: a comparison mints nothing). The first candidate that passes is the answer, UNLESS
+  #   more than one candidate passes: that is ambiguity (gate C2), refused by name naming every
+  #   candidate. Ambiguity is a property of `entries`, not of the mint — an injective mint stops one
+  #   value being minted twice, not one minted node being filed under two identifiers of one map — so
+  #   it is checked on every call, not assumed unreachable within a single registry.
   # - Anything else is refused by name.
   #
   # ★ THE REGISTRY IS BOUND BEFORE THE DOOR NAME, against R6's name-first order everywhere else, and
@@ -359,14 +363,24 @@ let
   #
   # The index is built only when a hint misses, and it forces every entry's `hint` field and
   # nothing else: an entry whose other fields are computed through this resolver is not dragged in.
+  #
+  # The registry record itself is MIXED (§v1.2): `entries`/`isCanonical` required, `hint`/`form`
+  # defaulted, and the whole set is CLOSED (an unknown field is a mistake, not extension data) — so
+  # it composes `checkRequired` under `checkOptions` (gate C3) rather than native closed formals,
+  # which refused an unknown field uncatchably on this construct's own published door.
   resolve =
-    {
-      entries,
-      isCanonical,
-      hint ? "name",
-      form ? "an attrset",
-    }:
+    r:
     let
+      checked = checkOptions "gen-prelude.resolve" [
+        "entries"
+        "isCanonical"
+        "hint"
+        "form"
+      ] (checkRequired "gen-prelude.resolve" [ "entries" "isCanonical" ] r);
+      entries = checked.entries;
+      isCanonical = checked.isCanonical;
+      hint = checked.hint or "name";
+      form = checked.form or "an attrset";
       hintOf =
         v:
         let
@@ -393,6 +407,8 @@ let
       in
       if entries ? ${h} && isCanonical ref h then
         h
+      else if length found > 1 then
+        refuse "declaration '${h}' is ambiguous: it matches more than one entry of the registry (candidates: ${quoteNames found})"
       else if found != [ ] then
         head found
       else

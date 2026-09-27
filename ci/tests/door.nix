@@ -62,6 +62,36 @@ let
       } "gen-probe.door";
     in
     es.cabin.addr;
+
+  # C2: one registry, two identifiers, one minted node — the shape a federation resolve (B2 arm
+  # (a)) would present. `twinA` and `twinB` are two DIFFERENT keys of the SAME registry carrying the
+  # same stamp and identity-key value, so a declaration matching one matches both.
+  ambiguousEntries = {
+    twinA = {
+      name = "twin";
+      addr = "10.0.0.9";
+      id_hash = "host:9";
+      _identityKeys = [ "addr" ];
+    };
+    twinB = {
+      name = "twin";
+      addr = "10.0.0.9";
+      id_hash = "host:9";
+      _identityKeys = [ "addr" ];
+    };
+  };
+  ambiguous =
+    resolve
+      {
+        entries = ambiguousEntries;
+        isCanonical = isCanonical ambiguousEntries;
+      }
+      "gen-probe.door"
+      {
+        name = "twin";
+        addr = "10.0.0.9";
+        id_hash = "host:9";
+      };
 in
 {
   flake.tests.door-options = {
@@ -189,6 +219,24 @@ in
       } "gen-probe.door" { label = "a"; };
       expected = "a";
     };
+    # C2: two entries under one hint that both pass the verdict (a federation-shaped registry, one
+    # map holding a minted node filed under two identifiers) is ambiguity, not a silent first-pick.
+    test-ambiguous-declaration-refused-catchably = {
+      expr = refused ambiguous;
+      expected = true;
+    };
+    # C3: resolve's own registry record is a published door and is CLOSED (R5) — an unknown field
+    # (the spec's own former field name, `hintOf`) is refused by name, not aborted uncatchably.
+    test-unknown-resolve-option-refused-catchably = {
+      expr = refused (
+        resolve {
+          inherit entries;
+          isCanonical = isCanonical entries;
+          hintOf = "x";
+        } "gen-probe.door" "igloo"
+      );
+      expected = true;
+    };
   };
 
   # Every refusal names the door first and the construct last (R6).
@@ -238,6 +286,25 @@ in
       test-renamed-non-member-named = {
         expr = r (entries.yurt // { addr = "evil"; });
         expectedError = pin "declaration 'renamed' is not a member of the registry [(]available: 'igloo', 'yurt'[)] [(]in prelude[.]resolve[)]";
+      };
+      # C2: named and catchable, listing every candidate it passed as (not the first, silently).
+      test-ambiguous-declaration-named = {
+        expr = ambiguous;
+        expectedError = pin "declaration 'twin' is ambiguous: it matches more than one entry of the registry [(]candidates: 'twinA', 'twinB'[)] [(]in prelude[.]resolve[)]";
+      };
+      # C3: this refusal fires before any door is known (it is resolve's OWN registry record, bound
+      # first per R6's stated order), so it names the construct itself rather than the caller's door
+      # — the one place `prelude.resolve` cannot yet name the published door the caller invoked.
+      test-unknown-resolve-option-named = {
+        expr = resolve {
+          inherit entries;
+          isCanonical = isCanonical entries;
+          hintOf = "x";
+        } "gen-probe.door" "igloo";
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-prelude[.]resolve: 'hintOf' is not an option of this door; the options are closed [(]accepted: 'entries', 'isCanonical', 'hint', 'form'[)] [(]in prelude[.]checkOptions[)]$";
+        };
       };
     };
 }
