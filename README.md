@@ -163,6 +163,18 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
 - `range from to` — inclusive integer range (`[ ]` when `from > to`).
 - `removePrefix pre s` — `s` with a leading `pre` stripped (unchanged if absent).
 
+### Door constructs (den-hoag-7gp66 P1)
+
+Shared by every published gen door. Each takes the name of the door the caller invoked and
+refuses, catchably, as `<door>: … (in prelude.<construct>)`:
+
+- `checkOptions door accepted opts` — a closed options set; an unknown field is refused by name.
+- `checkRequired door required record` — an open data record; a missing field is refused, an
+  extra one admitted.
+- `resolve { entries; isCanonical; hint ? "name"; } door ref` — a reference written as an
+  identifier (a string) or a declaration value, to its identifier. The `hint` field only locates
+  candidates; the member's `isCanonical v k` decides, and nothing is minted.
+
 ### Retired: `toposort`
 
 `toposort` used to live here, vendored verbatim from `nixpkgs lib/lists.nix` along with its
