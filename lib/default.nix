@@ -391,32 +391,41 @@ let
         filter (k: hintOf entries.${k} != null) (attrNames entries)
       );
     in
-    door: ref:
-    let
-      refuse = msg: throw "${door}: ${msg} (in prelude.resolve)";
-    in
-    if isString ref then
+    # `seq checked` (den-hoag-7gp66 P2, gen-memo eed0685's defect class): the door returned a bare
+    # lambda, so `resolve r`'s own WHNF forced neither `checkOptions` nor `checkRequired` — a bad
+    # registry record sailed through this application and was admitted until a caller actually
+    # applied the returned door to a `ref`. Forcing `checked` here (once per registry application,
+    # not once per `ref`) makes the refusal unconditional on whether the door is ever called — the
+    # same idiom `gen-settings.resolveOne`/`resolveAll`/`injectAspectSettings` (0474486) and
+    # `gen-inspect.graphSubject` (440336c) use.
+    builtins.seq checked (
+      door: ref:
       let
-        id = unsafeDiscardStringContext ref;
+        refuse = msg: throw "${door}: ${msg} (in prelude.resolve)";
       in
-      if entries ? ${id} then id else refuse "reference '${id}' names no entry of the registry"
-    else if isAttrs ref && hintOf ref != null then
-      let
-        h = hintOf ref;
-        found = filter (isCanonical ref) (byHint.${h} or [ ]);
-      in
-      if entries ? ${h} && isCanonical ref h then
-        h
-      else if length found > 1 then
-        refuse "declaration '${h}' is ambiguous: it matches more than one entry of the registry (candidates: ${quoteNames found})"
-      else if found != [ ] then
-        head found
+      if isString ref then
+        let
+          id = unsafeDiscardStringContext ref;
+        in
+        if entries ? ${id} then id else refuse "reference '${id}' names no entry of the registry"
+      else if isAttrs ref && hintOf ref != null then
+        let
+          h = hintOf ref;
+          found = filter (isCanonical ref) (byHint.${h} or [ ]);
+        in
+        if entries ? ${h} && isCanonical ref h then
+          h
+        else if length found > 1 then
+          refuse "declaration '${h}' is ambiguous: it matches more than one entry of the registry (candidates: ${quoteNames found})"
+        else if found != [ ] then
+          head found
+        else
+          refuse "declaration '${h}' is not a member of the registry (available: ${quoteNames (attrNames entries)})"
+      else if isAttrs ref then
+        refuse "a declaration must carry a string '${hint}' to locate it (expected ${form})"
       else
-        refuse "declaration '${h}' is not a member of the registry (available: ${quoteNames (attrNames entries)})"
-    else if isAttrs ref then
-      refuse "a declaration must carry a string '${hint}' to locate it (expected ${form})"
-    else
-      refuse "expected an identifier (a string) or a declaration (${form}), got a ${builtins.typeOf ref}";
+        refuse "expected an identifier (a string) or a declaration (${form}), got a ${builtins.typeOf ref}"
+    );
 in
 {
   # ── builtins re-exports (aliases; zero new code) ──
