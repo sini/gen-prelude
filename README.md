@@ -163,7 +163,7 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
 - `range from to` — inclusive integer range (`[ ]` when `from > to`).
 - `removePrefix pre s` — `s` with a leading `pre` stripped (unchanged if absent).
 
-### Door constructs (den-hoag-7gp66 P1)
+### Door constructs
 
 Shared by every published gen door. Each takes the name of the door the caller invoked and
 refuses, catchably, as `<door>: … (in prelude.<construct>)`:
