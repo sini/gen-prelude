@@ -11,7 +11,12 @@
 # forces no field but the hint.
 { genPrelude, ... }:
 let
-  inherit (genPrelude) checkOptions checkRequired resolve;
+  inherit (genPrelude)
+    checkGuarded
+    checkOptions
+    checkRequired
+    resolve
+    ;
   refused = v: !(builtins.tryEval (builtins.deepSeq v v)).success;
 
   entries = {
@@ -143,6 +148,50 @@ in
             a = 1;
             colr = 1;
           }
+        )
+      );
+      expected = true;
+    };
+  };
+
+  # `checkGuarded` (v1.2, den-hoag-7gp66 premise 7): a record field is refused BY NAME when it
+  # collides with a sibling options step's own declared names; every other field keeps R5's
+  # unchanged width subtyping (cell G10-ctl at the unit level, mirrored here).
+  flake.tests.door-guarded = {
+    test-guarded-name-refused-catchably = {
+      expr = refused (
+        checkGuarded "gen-probe.door" "gen-probe.options" [ "exclusive" ] {
+          rules = [ ];
+          exclusive = true;
+        }
+      );
+      expected = true;
+    };
+    test-unrelated-field-admitted-unchanged = {
+      expr = checkGuarded "gen-probe.door" "gen-probe.options" [ "exclusive" ] {
+        rules = [ ];
+        colr = 1;
+      };
+      expected = {
+        rules = [ ];
+        colr = 1;
+      };
+    };
+    test-empty-guarded-names-admits-everything = {
+      expr = checkGuarded "gen-probe.door" "gen-probe.options" [ ] {
+        rules = [ ];
+        colr = 1;
+      };
+      expected = {
+        rules = [ ];
+        colr = 1;
+      };
+    };
+    # Composed with checkRequired, as mkDoor wires it: a missing required field still refuses.
+    test-composes-with-checkRequired = {
+      expr = refused (
+        checkGuarded "gen-probe.door" "gen-probe.options" [ "exclusive" ] (
+          checkRequired "gen-probe.door" [ "rules" ] { exclusive = true; }
         )
       );
       expected = true;

@@ -47,6 +47,27 @@ let
     optional = [ "maxDepth" ];
   } (o: record (r: id: [ id ]));
 
+  # (v1.2, den-hoag-7gp66 premise 7, cells G10/G10-ctl) a chained door whose record step guards
+  # against its own options step: `optionsStep` names the OUTER, already-built door
+  # (`guardedOptionsStep`), even though that door's own definition calls back into
+  # `guardedRecord` — the contract thunk is independent of the functor thunk.
+  guardedOptionsStep = door {
+    name = "gen-probe.guarded";
+    optional = [ "exclusive" ];
+  } (o: guardedRecord o);
+  guardedRecord =
+    o:
+    door
+      {
+        name = "gen-probe.guarded";
+        required = [ "rules" ];
+        open = true;
+        optionsStep = guardedOptionsStep;
+      }
+      (r: {
+        inherit o r;
+      });
+
   derived =
     d:
     builtins.listToAttrs (map (n: lib.nameValuePair n false) d.__contract.required)
@@ -164,6 +185,57 @@ in
       expected = [ "a" ];
     };
 
+    # G10 (v1.2, den-hoag-7gp66 premise 7): an option of the door's own options step, given on
+    # the record step instead, is refused by name rather than silently admitted and ignored.
+    test-G10-misplaced-option-refused-at-record-step = {
+      expr = refusedAtApplication (
+        guardedOptionsStep { } {
+          rules = [ ];
+          exclusive = true;
+        }
+      );
+      expected = true;
+    };
+    # G10-ctl: a field that is neither required nor a sibling option keeps R5's width subtyping.
+    test-G10-ctl-unrelated-field-admitted-unchanged = {
+      expr =
+        (guardedOptionsStep { } {
+          rules = [ ];
+          colr = 1;
+        }).r.colr;
+      expected = 1;
+    };
+    # The sibling's own options are still checked normally through the guarded record step.
+    test-G10-sibling-options-still-given-through-first-step = {
+      expr = (guardedOptionsStep { exclusive = true; } { rules = [ ]; }).o.exclusive;
+      expected = true;
+    };
+    # (v1.2) `optionsStep` without `open = true` is refused at `door spec`, before any body.
+    test-optionsStep-without-open-refused-at-door-spec = {
+      expr = refusedAtApplication (
+        door {
+          name = "gen-probe.badGuard1";
+          required = [ "rules" ];
+          open = false;
+          optionsStep = guardedOptionsStep;
+        } (r: r)
+      );
+      expected = true;
+    };
+    # (v1.2) a required field that is also one of the sibling's guarded names is refused at
+    # `door spec`: self-contradictory, since a required field can never be legally omitted.
+    test-optionsStep-required-overlap-refused-at-door-spec = {
+      expr = refusedAtApplication (
+        door {
+          name = "gen-probe.badGuard2";
+          required = [ "exclusive" ];
+          open = true;
+          optionsStep = guardedOptionsStep;
+        } (r: r)
+      );
+      expected = true;
+    };
+
     # D3: the published map agrees with the contract, and nixpkgs' reader reads it.
     test-D3-closed-map-agrees-with-the-contract = {
       expr = [
@@ -244,6 +316,7 @@ in
     };
 
     # The constructor is itself a door over its own spec record, and `resolve` is built from it.
+    # `optionsStep` (v1.2, den-hoag-7gp66 premise 7) joined the spec's own optional field set.
     test-door-publishes-its-own-contract = {
       expr = functionArgs door;
       expected = {
@@ -251,6 +324,7 @@ in
         required = true;
         optional = true;
         open = true;
+        optionsStep = true;
       };
     };
     test-door-refuses-a-missing-name-at-application = {
@@ -388,7 +462,7 @@ in
           name = "gen-probe.door";
           requried = [ "a" ];
         } (x: x);
-        expectedError = pin "gen-prelude[.]door" "'requried' is not an option of this door; the options are closed [(]accepted: 'name', 'required', 'optional', 'open'[)] [(]in prelude[.]checkOptions[)]";
+        expectedError = pin "gen-prelude[.]door" "'requried' is not an option of this door; the options are closed [(]accepted: 'name', 'required', 'optional', 'open', 'optionsStep'[)] [(]in prelude[.]checkOptions[)]";
       };
       test-door-spec-overlap-named = {
         expr = door {
@@ -401,6 +475,32 @@ in
       test-door-spec-missing-name-named = {
         expr = door { } (x: x);
         expectedError = pin "gen-prelude[.]door" "required field 'name' is missing [(]required: 'name'[)] [(]in prelude[.]checkRequired[)]";
+      };
+      # (v1.2, cell G10) the misplaced option is named, and the door it belongs to.
+      test-misplaced-option-named = {
+        expr = guardedOptionsStep { } {
+          rules = [ ];
+          exclusive = true;
+        };
+        expectedError = pin "gen-probe[.]guarded" "'exclusive' is an option of gen-probe[.]guarded, not a field of this record [(]in prelude[.]checkGuarded[)]";
+      };
+      test-optionsStep-without-open-named = {
+        expr = door {
+          name = "gen-probe.badGuard1";
+          required = [ "rules" ];
+          open = false;
+          optionsStep = guardedOptionsStep;
+        } (r: r);
+        expectedError = pin "gen-prelude[.]door" "'optionsStep' guards a record's fields and is meaningless without open = true [(]in the contract of 'gen-probe[.]badGuard1'[)] [(]in prelude[.]door[)]";
+      };
+      test-optionsStep-required-overlap-named = {
+        expr = door {
+          name = "gen-probe.badGuard2";
+          required = [ "exclusive" ];
+          open = true;
+          optionsStep = guardedOptionsStep;
+        } (r: r);
+        expectedError = pin "gen-prelude[.]door" "'exclusive' is both required here and an option of 'gen-probe[.]guarded' [(]in the contract of 'gen-probe[.]badGuard2'[)] [(]in prelude[.]door[)]";
       };
     };
 }

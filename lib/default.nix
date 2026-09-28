@@ -338,6 +338,24 @@ let
       else
         throw "${door}: required field '${head missing}' is missing (required: ${quoteNames required}) (in prelude.checkRequired)";
 
+  # `checkGuarded door guardName guardedNames record` — a data record's field is refused BY NAME
+  # when it is also one of a SIBLING options step's own declared names (den-hoag-7gp66 v1.2,
+  # premise 7: R5's width subtyping applied where it should not reach — a chained door's record
+  # step silently admitted, then ignored, an option that belonged on its own options step one
+  # position earlier). `guardedNames` is always DERIVED from the sibling's own `__contract`
+  # (`required ++ optional`), never hand-written, so it cannot drift from what that door actually
+  # accepts. Every other extra field keeps R5's unchanged width subtyping (cell G10-ctl) — only a
+  # name that collides with the sibling's own options is refused.
+  checkGuarded =
+    door: guardName: guardedNames: record:
+    let
+      hits = filter (f: elem f guardedNames) (attrNames record);
+    in
+    if hits == [ ] then
+      record
+    else
+      throw "${door}: '${head hits}' is an option of ${guardName}, not a field of this record (in prelude.checkGuarded)";
+
   # ── the readers (den-hoag-7gp66 P2-OQ15 arm (i)) ──
   # nixpkgs `lib.isFunction` / `lib.functionArgs` (lib/trivial.nix), vendored verbatim: FUNCTOR-AWARE.
   # These names were once bare `builtins` aliases, which read a functor as a non-function and abort
@@ -385,6 +403,18 @@ let
       required = spec.required or [ ];
       optional = spec.optional or [ ];
       open = spec.open or false;
+      # (v1.2, den-hoag-7gp66 premise 7) an already-built sibling door, consulted only under
+      # `open = true`; `guardedNames` is DERIVED from its `__contract`, never hand-written. Forcing
+      # `.__contract` never forces `.__functor`, so this can name the OUTER, already-built door of a
+      # chain (`optionsStep = dispatch;`) with no circular-evaluation problem, even though that
+      # door's own definition calls back into this record step: the two thunks are independent.
+      optionsStep = spec.optionsStep or null;
+      guardName = if optionsStep == null then null else optionsStep.__contract.name;
+      guardedNames =
+        if optionsStep == null then
+          [ ]
+        else
+          optionsStep.__contract.required ++ optionsStep.__contract.optional;
       contract = {
         inherit
           name
@@ -398,7 +428,12 @@ let
         // listToAttrs (map (n: nameValuePair n true) optional);
       check =
         if open then
-          checkRequired name required
+          (
+            if guardedNames == [ ] then
+              checkRequired name required
+            else
+              record: checkGuarded name guardName guardedNames (checkRequired name required record)
+          )
         else if required == [ ] then
           checkOptions name optional
         else
@@ -437,17 +472,30 @@ let
           "required"
           "optional"
           "open"
+          "optionsStep"
         ];
       }
       (
         s:
         let
           both = filter (f: elem f (s.optional or [ ])) (s.required or [ ]);
+          optionsStep = s.optionsStep or null;
+          guardName = if optionsStep == null then null else optionsStep.__contract.name;
+          guardedNames =
+            if optionsStep == null then
+              [ ]
+            else
+              optionsStep.__contract.required ++ optionsStep.__contract.optional;
+          requiredGuardOverlap = filter (f: elem f guardedNames) (s.required or [ ]);
         in
-        if both == [ ] then
-          mkDoor s
-        else
+        if both != [ ] then
           throw "gen-prelude.door: '${head both}' is both required and optional in the contract of '${s.name}' (in prelude.door)"
+        else if optionsStep != null && (s.open or false) != true then
+          throw "gen-prelude.door: 'optionsStep' guards a record's fields and is meaningless without open = true (in the contract of '${s.name}') (in prelude.door)"
+        else if requiredGuardOverlap != [ ] then
+          throw "gen-prelude.door: '${head requiredGuardOverlap}' is both required here and an option of '${guardName}' (in the contract of '${s.name}') (in prelude.door)"
+        else
+          mkDoor s
       );
 
   # `resolve { hint ? "name"; form ? "an attrset"; } { entries; isCanonical; } door ref` — a reference,
@@ -701,8 +749,9 @@ in
   # has one owner, `gen-graph.topoOrder`, which is Kahn 1962 over an accessor rather than
   # this depth-first scan.
   hasPrefix = pre: s: substring 0 (stringLength pre) s == pre;
-  # The door constructs (den-hoag-7gp66 P1), defined above.
+  # The door constructs (den-hoag-7gp66 P1; checkGuarded is v1.2), defined above.
   inherit
+    checkGuarded
     checkOptions
     checkRequired
     door
