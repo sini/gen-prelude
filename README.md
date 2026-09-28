@@ -126,7 +126,7 @@ Semantics are exactly those of the corresponding `builtins.*`.
   verbatim: **functor-aware**. A functor carrying `__functionArgs` (nixpkgs `setFunctionArgs`, and
   every `door` below) is a function, and its published map is its arguments; on a lambda they
   answer exactly what the builtins answer. They are NOT the `builtins` of the same names, which
-  read a functor as a non-function and abort uncatchably on one (den-hoag-7gp66 P2-OQ15 arm (i)).
+  read a functor as a non-function and abort uncatchably on one.
 
 ### Vendored pure utilities
 
@@ -178,8 +178,8 @@ refuses, catchably, as `<door>: … (in prelude.<construct>)`:
 - `checkOptions door accepted opts` — a closed options set; an unknown field is refused by name.
 - `checkRequired door required record` — an open data record; a missing field is refused, an
   extra one admitted.
-- `door { name; required ? [ ]; optional ? [ ]; open ? false; } body` — the door constructor
-  (den-hoag-49yxv): a functor that publishes its field contract as data, `__contract` plus the
+- `door { name; required ? [ ]; optional ? [ ]; open ? false; } body` — the door constructor: a
+  functor that publishes its field contract as data, `__contract` plus the
   derived `__functionArgs` (required ↦ `false`, optional ↦ `true`), and checks its argument at its
   own application — `checkRequired` for an `open` record, `checkOptions ∘ checkRequired` for a
   closed one — before `body` runs. A curried door is a chain of doors, one per record step. The spec record is itself
