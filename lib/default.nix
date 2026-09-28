@@ -425,15 +425,30 @@ let
           in
           seq a (body a);
     };
-  door = mkDoor {
-    name = "gen-prelude.door";
-    required = [ "name" ];
-    optional = [
-      "required"
-      "optional"
-      "open"
-    ];
-  } mkDoor;
+  # The spec record is itself checked at `door spec` (closed, `name` required), and a field both
+  # required and optional is refused by name there: the derived map would publish it optional
+  # (`//` keeps the right side) while the check requires it, so map and check would disagree.
+  door =
+    mkDoor
+      {
+        name = "gen-prelude.door";
+        required = [ "name" ];
+        optional = [
+          "required"
+          "optional"
+          "open"
+        ];
+      }
+      (
+        s:
+        let
+          both = filter (f: elem f (s.optional or [ ])) (s.required or [ ]);
+        in
+        if both == [ ] then
+          mkDoor s
+        else
+          throw "gen-prelude.door: '${head both}' is both required and optional in the contract of '${s.name}' (in prelude.door)"
+      );
 
   # `resolve { hint ? "name"; form ? "an attrset"; } { entries; isCanonical; } door ref` — a reference,
   # written as an identifier or as a declaration value, to its IDENTIFIER (R1).

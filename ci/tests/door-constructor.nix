@@ -174,7 +174,17 @@ in
             other = true;
           }
         )
-        (lib.functionArgs closed == closed.__functionArgs)
+        # P1 (door-fold gate): against the native-formals lambda the door stands for, not against
+        # its own `__functionArgs` (`lib.functionArgs`'s definition reads that, so it cannot red).
+        (
+          lib.functionArgs closed == builtins.functionArgs (
+            {
+              hostName,
+              other ? null,
+            }:
+            null
+          )
+        )
       ];
       expected = [
         true
@@ -185,7 +195,7 @@ in
     test-D3-open-map-agrees-with-the-contract = {
       expr = [
         (agrees open)
-        (lib.functionArgs open == { parent = false; })
+        (lib.functionArgs open == builtins.functionArgs ({ parent, ... }: null))
       ];
       expected = [
         true
@@ -251,6 +261,22 @@ in
       expr = refusedAtApplication (door {
         name = "gen-probe.door";
         requried = [ ];
+      });
+      expected = true;
+    };
+    # K2 (door-fold gate): the constructor's own spec is a closed door, checked at `door spec`.
+    test-door-refuses-a-required-optional-overlap-at-application = {
+      expr = refusedAtApplication (door {
+        name = "gen-probe.door";
+        required = [ "a" ];
+        optional = [ "a" ];
+      });
+      expected = true;
+    };
+    test-door-spec-typo-refused-before-any-body = {
+      expr = refusedAtApplication (door {
+        name = "gen-probe.door";
+        requried = [ "a" ];
       });
       expected = true;
     };
@@ -356,6 +382,21 @@ in
       test-unknown-option-named = {
         expr = options { colr = 1; };
         expectedError = pin "gen-probe[.]options" "'colr' is not an option of this door; the options are closed [(]accepted: 'maxDepth'[)] [(]in prelude[.]checkOptions[)]";
+      };
+      test-door-spec-typo-named = {
+        expr = door {
+          name = "gen-probe.door";
+          requried = [ "a" ];
+        } (x: x);
+        expectedError = pin "gen-prelude[.]door" "'requried' is not an option of this door; the options are closed [(]accepted: 'name', 'required', 'optional', 'open'[)] [(]in prelude[.]checkOptions[)]";
+      };
+      test-door-spec-overlap-named = {
+        expr = door {
+          name = "gen-probe.door";
+          required = [ "a" ];
+          optional = [ "a" ];
+        } (x: x);
+        expectedError = pin "gen-prelude[.]door" "'a' is both required and optional in the contract of 'gen-probe[.]door' [(]in prelude[.]door[)]";
       };
       test-door-spec-missing-name-named = {
         expr = door { } (x: x);

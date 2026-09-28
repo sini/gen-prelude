@@ -182,7 +182,9 @@ refuses, catchably, as `<door>: … (in prelude.<construct>)`:
   (den-hoag-49yxv): a functor that publishes its field contract as data, `__contract` plus the
   derived `__functionArgs` (required ↦ `false`, optional ↦ `true`), and checks its argument at its
   own application — `checkRequired` for an `open` record, `checkOptions ∘ checkRequired` for a
-  closed one — before `body` runs. A curried door is a chain of doors, one per record step.
+  closed one — before `body` runs. A curried door is a chain of doors, one per record step. The spec record is itself
+  checked at `door spec`: an unknown field, and a field both required and optional, are refused by
+  name.
 - `resolve { hint ? "name"; form ? "an attrset"; } { entries; isCanonical; } door ref` — a
   reference written as an identifier (a string) or a declaration value, to its identifier. Options
   first, then the registry; both steps are doors. The `hint` field only locates candidates; the
