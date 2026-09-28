@@ -21,12 +21,10 @@ let
     elemAt
     filter
     foldl'
-    functionArgs
     genList
     groupBy
     head
     isAttrs
-    isFunction
     isList
     isString
     length
@@ -340,7 +338,104 @@ let
       else
         throw "${door}: required field '${head missing}' is missing (required: ${quoteNames required}) (in prelude.checkRequired)";
 
-  # `resolve { entries; isCanonical; hint ? "name"; form ? "an attrset"; } door ref` — a reference,
+  # ── the readers (den-hoag-7gp66 P2-OQ15 arm (i)) ──
+  # nixpkgs `lib.isFunction` / `lib.functionArgs` (lib/trivial.nix), vendored verbatim: FUNCTOR-AWARE.
+  # These names were once bare `builtins` aliases, which read a functor as a non-function and abort
+  # uncatchably (`'functionArgs' requires a function`) on one — so on every `door` below. A functor
+  # carrying `__functionArgs` (nixpkgs `setFunctionArgs`, and `door`) reads that map; a lambda reads
+  # exactly what the builtin reads.
+  functionArgs =
+    f:
+    if f ? __functor then
+      f.__functionArgs or (builtins.functionArgs (f.__functor f))
+    else
+      builtins.functionArgs f;
+  isFunction =
+    f:
+    builtins.isFunction f
+    || (f ? __functor && builtins.isFunction f.__functor && builtins.isFunction (f.__functor f));
+
+  # `door { name; required ? [ ]; optional ? [ ]; open ? false; } body` — a published door that
+  # takes a RECORD step and publishes its field contract AS DATA (den-hoag-49yxv, defaulted and
+  # reversible; C′). The result is a functor in nixpkgs' `setFunctionArgs` convention:
+  #   `__contract`     the contract itself, `{ name; required; optional; open; }` — the one source;
+  #   `__functionArgs` DERIVED from it (required ↦ false, optional ↦ true), so `functionArgs` and the
+  #                    ADR-0035 vocabulary walk read the door's fields, and the map cannot disagree
+  #                    with the check, because both come from one value;
+  #   `__functor`      the check, then `body`.
+  # The check is derived from the same contract: `open` is R5's data record (`checkRequired` alone,
+  # width subtyping); closed is `checkOptions (required ++ optional) ∘ checkRequired required`, and a
+  # door with no required field takes `checkOptions optional` alone (`checkRequired _ [ ] r ≡ r` on an
+  # attrset, and a non-attrset is still refused catchably, by `checkOptions`).
+  #
+  # ★ THE CHECK IS FORCED AT THE DOOR'S APPLICATION: `let a = check args; in seq a (body a)`, never
+  # `body (check args)` — that form is lazy whenever `body`'s WHNF does not read its argument, and it
+  # admits both an unknown and a missing field (trap 23e19dc0; the `seq checked` idiom of `resolve`).
+  # A pure options door (closed, no required field) answers `{ }` without the check, since
+  # `checkOptions _ _ { } ≡ { }`; the choice is made once per door.
+  #
+  # Contract, map and check are bound when `door spec` is applied, before `body`, so a nested door
+  # binds `door spec` once and supplies only the body per call. A curried door is a chain: each record
+  # step is its own door, and `functionArgs` reads the first step. `mkDoor` is the unchecked core;
+  # the published `door` is itself a door over its own spec record.
+  mkDoor =
+    spec:
+    let
+      inherit (spec) name;
+      required = spec.required or [ ];
+      optional = spec.optional or [ ];
+      open = spec.open or false;
+      contract = {
+        inherit
+          name
+          required
+          optional
+          open
+          ;
+      };
+      publishedArgs =
+        listToAttrs (map (n: nameValuePair n false) required)
+        // listToAttrs (map (n: nameValuePair n true) optional);
+      check =
+        if open then
+          checkRequired name required
+        else if required == [ ] then
+          checkOptions name optional
+        else
+          args: checkOptions name (required ++ optional) (checkRequired name required args);
+      pureOptions = !open && required == [ ];
+    in
+    body: {
+      __contract = contract;
+      __functionArgs = publishedArgs;
+      __functor =
+        if pureOptions then
+          _: args:
+          if args == { } then
+            body args
+          else
+            let
+              a = check args;
+            in
+            seq a (body a)
+        else
+          _: args:
+          let
+            a = check args;
+          in
+          seq a (body a);
+    };
+  door = mkDoor {
+    name = "gen-prelude.door";
+    required = [ "name" ];
+    optional = [
+      "required"
+      "optional"
+      "open"
+    ];
+  } mkDoor;
+
+  # `resolve { hint ? "name"; form ? "an attrset"; } { entries; isCanonical; } door ref` — a reference,
   # written as an identifier or as a declaration value, to its IDENTIFIER (R1).
   #
   # - An identifier is a STRING (den-hoag-3w9e7 arm (a)) and must name an entry.
@@ -364,41 +459,45 @@ let
   # The index is built only when a hint misses, and it forces every entry's `hint` field and
   # nothing else: an entry whose other fields are computed through this resolver is not dragged in.
   #
-  # The registry record itself is MIXED (§v1.2): `entries`/`isCanonical` required, `hint`/`form`
-  # defaulted, and the whole set is CLOSED (an unknown field is a mistake, not extension data) — so
-  # it composes `checkRequired` under `checkOptions` (gate C3) rather than native closed formals,
-  # which refused an unknown field uncatchably on this construct's own published door.
-  resolve =
-    r:
+  # Two record steps, both doors (P2, R7): the OPTIONS first (`hint`, `form`; closed), then the
+  # REGISTRY (`entries`, `isCanonical`; required, closed — an unknown field is a mistake, not
+  # extension data). Each is checked at its own application, catchably and by name, so a bad
+  # registry is refused when `resolve opts registry` is formed, whether or not the returned door is
+  # ever called (gen-memo eed0685's defect class). Both specs are bound once, outside any call.
+  resolveOptions = mkDoor {
+    name = "gen-prelude.resolve";
+    optional = [
+      "hint"
+      "form"
+    ];
+  };
+  resolveRegistry = mkDoor {
+    name = "gen-prelude.resolve";
+    required = [
+      "entries"
+      "isCanonical"
+    ];
+  };
+  resolve = resolveOptions (
+    o:
     let
-      checked = checkOptions "gen-prelude.resolve" [
-        "entries"
-        "isCanonical"
-        "hint"
-        "form"
-      ] (checkRequired "gen-prelude.resolve" [ "entries" "isCanonical" ] r);
-      entries = checked.entries;
-      isCanonical = checked.isCanonical;
-      hint = checked.hint or "name";
-      form = checked.form or "an attrset";
+      hint = o.hint or "name";
+      form = o.form or "an attrset";
       hintOf =
         v:
         let
           h = v.${hint} or null;
         in
         if isString h then unsafeDiscardStringContext h else null;
-      byHint = groupBy (k: hintOf entries.${k}) (
-        filter (k: hintOf entries.${k} != null) (attrNames entries)
-      );
     in
-    # `seq checked` (den-hoag-7gp66 P2, gen-memo eed0685's defect class): the door returned a bare
-    # lambda, so `resolve r`'s own WHNF forced neither `checkOptions` nor `checkRequired` — a bad
-    # registry record sailed through this application and was admitted until a caller actually
-    # applied the returned door to a `ref`. Forcing `checked` here (once per registry application,
-    # not once per `ref`) makes the refusal unconditional on whether the door is ever called — the
-    # same idiom `gen-settings.resolveOne`/`resolveAll`/`injectAspectSettings` (0474486) and
-    # `gen-inspect.graphSubject` (440336c) use.
-    builtins.seq checked (
+    resolveRegistry (
+      r:
+      let
+        inherit (r) entries isCanonical;
+        byHint = groupBy (k: hintOf entries.${k}) (
+          filter (k: hintOf entries.${k} != null) (attrNames entries)
+        );
+      in
       door: ref:
       let
         refuse = msg: throw "${door}: ${msg} (in prelude.resolve)";
@@ -425,7 +524,8 @@ let
         refuse "a declaration must carry a string '${hint}' to locate it (expected ${form})"
       else
         refuse "expected an identifier (a string) or a declaration (${form}), got a ${builtins.typeOf ref}"
-    );
+    )
+  );
 in
 {
   # ── builtins re-exports (aliases; zero new code) ──
@@ -441,7 +541,6 @@ in
     elemAt
     filter
     foldl'
-    functionArgs
     genList
     # groupBy partitions by string key and keeps input order within each group. It is a primop, so
     # this is an alias and not a vendored utility: the fold this replaces rebuilt
@@ -451,7 +550,6 @@ in
     groupBy
     head
     isAttrs
-    isFunction
     isList
     length
     listToAttrs
@@ -589,7 +687,14 @@ in
   # this depth-first scan.
   hasPrefix = pre: s: substring 0 (stringLength pre) s == pre;
   # The door constructs (den-hoag-7gp66 P1), defined above.
-  inherit checkOptions checkRequired resolve;
+  inherit
+    checkOptions
+    checkRequired
+    door
+    resolve
+    ;
+  # The functor-aware readers (nixpkgs `lib.isFunction` / `lib.functionArgs`), defined above.
+  inherit isFunction functionArgs;
   # Drop-in for nixpkgs lib.hasInfix / lib.escapeRegex, but linear (no `.*` backtracking).
   inherit hasInfix escapeRegex;
   imap0 = f: xs: genList (i: f i (elemAt xs i)) (length xs);

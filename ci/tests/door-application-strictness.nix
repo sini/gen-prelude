@@ -9,7 +9,10 @@
 # same bad registry — the check fired only once a caller happened to apply both `door` and `ref`, so
 # a registry built once and handed to many call sites (the shared-registry shape this door exists
 # for) admitted a bad record at construction and refused it only much later, wherever it was first
-# resolved against.
+# resolved against. (Those measurements are of the pre-P2 shape, `resolve registry door ref`. Since P2
+# the registry is resolve's SECOND record step, `resolve opts registry door ref`, and both steps are
+# `prelude.door`s, which force their check at their own application — the cells below apply `{ }`
+# options and then the registry.)
 #
 # `seq`, not `deepSeq`: WHNF of `resolve`'s own return, no field read and no door/ref applied — the
 # strictly narrower predicate `door.nix`'s `deepSeq`-based `refused` cannot discriminate, since
@@ -45,35 +48,41 @@ in
     # FIXED: a registry missing a required field is refused at `resolve`'s own application — no
     # door, no ref.
     test-resolve-missing-required-field-refused-at-application = {
-      expr = refusesAtApplication (resolve { });
+      expr = refusesAtApplication (resolve { } { });
       expected = true;
     };
     test-resolve-missing-isCanonical-refused-at-application = {
-      expr = refusesAtApplication (resolve {
-        inherit entries;
-      });
+      expr = refusesAtApplication (
+        resolve { } {
+          inherit entries;
+        }
+      );
       expected = true;
     };
     # C3: the registry record is closed (R5) — an unknown field is refused at application too.
     test-resolve-unknown-option-refused-at-application = {
-      expr = refusesAtApplication (resolve {
-        inherit entries isCanonical;
-        hintOf = "x";
-      });
+      expr = refusesAtApplication (
+        resolve { } {
+          inherit entries isCanonical;
+          hintOf = "x";
+        }
+      );
       expected = true;
     };
     # A valid registry answers at bare application: the fix must not turn a good registry strict
     # beyond its own checks (no field of `entries` is dragged in merely by constructing the door).
     test-resolve-valid-registry-answers-at-application = {
-      expr = answersAtApplication (resolve {
-        inherit entries isCanonical;
-      });
+      expr = answersAtApplication (
+        resolve { } {
+          inherit entries isCanonical;
+        }
+      );
       expected = true;
     };
     # Regression pin: the door returned still resolves once applied, unchanged by forcing `checked`
     # earlier.
     test-resolve-still-resolves-once-applied = {
-      expr = (resolve { inherit entries isCanonical; }) "gen-probe.door" "a";
+      expr = (resolve { } { inherit entries isCanonical; }) "gen-probe.door" "a";
       expected = "a";
     };
   };

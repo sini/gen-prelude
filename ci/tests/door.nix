@@ -37,7 +37,7 @@ let
       c = entries.${k};
     in
     (v.id_hash or null) == c.id_hash && builtins.all (f: v ? ${f} && v.${f} == c.${f}) c._identityKeys;
-  hosts = resolve {
+  hosts = resolve { } {
     inherit entries;
     isCanonical = isCanonical entries;
   };
@@ -56,7 +56,7 @@ let
           _identityKeys = [ "addr" ];
         };
       };
-      rc = resolve {
+      rc = resolve { } {
         entries = es;
         isCanonical = isCanonical es;
       } "gen-probe.door";
@@ -81,7 +81,7 @@ let
     };
   };
   ambiguous =
-    resolve
+    resolve { }
       {
         entries = ambiguousEntries;
         isCanonical = isCanonical ambiguousEntries;
@@ -210,12 +210,11 @@ in
     };
     # A custom locator field.
     test-hint-field-is-the-callers = {
-      expr = resolve {
+      expr = resolve { hint = "label"; } {
         entries.a = {
           label = "a";
         };
         isCanonical = v: k: v.label == k;
-        hint = "label";
       } "gen-probe.door" { label = "a"; };
       expected = "a";
     };
@@ -229,7 +228,7 @@ in
     # (the spec's own former field name, `hintOf`) is refused by name, not aborted uncatchably.
     test-unknown-resolve-option-refused-catchably = {
       expr = refused (
-        resolve {
+        resolve { } {
           inherit entries;
           isCanonical = isCanonical entries;
           hintOf = "x";
@@ -296,14 +295,38 @@ in
       # first per R6's stated order), so it names the construct itself rather than the caller's door
       # — the one place `prelude.resolve` cannot yet name the published door the caller invoked.
       test-unknown-resolve-option-named = {
-        expr = resolve {
+        expr = resolve { } {
           inherit entries;
           isCanonical = isCanonical entries;
           hintOf = "x";
         } "gen-probe.door" "igloo";
         expectedError = {
           type = "ThrownError";
-          msg = "^gen-prelude[.]resolve: 'hintOf' is not an option of this door; the options are closed [(]accepted: 'entries', 'isCanonical', 'hint', 'form'[)] [(]in prelude[.]checkOptions[)]$";
+          msg = "^gen-prelude[.]resolve: 'hintOf' is not an option of this door; the options are closed [(]accepted: 'entries', 'isCanonical'[)] [(]in prelude[.]checkOptions[)]$";
+        };
+      };
+      # P2 (R7): the options step comes first, so the pre-P2 call shape — the registry where the
+      # options go — is refused by name at the options door, never silently read as options.
+      test-pre-p2-call-shape-named = {
+        expr = resolve {
+          inherit entries;
+          isCanonical = isCanonical entries;
+        } "gen-probe.door" "igloo";
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-prelude[.]resolve: 'entries' is not an option of this door; the options are closed [(]accepted: 'hint', 'form'[)] [(]in prelude[.]checkOptions[)]$";
+        };
+      };
+      # The hint and form moved to the options step: in the registry they are unknown fields.
+      test-hint-in-the-registry-named = {
+        expr = resolve { } {
+          inherit entries;
+          isCanonical = isCanonical entries;
+          hint = "name";
+        } "gen-probe.door" "igloo";
+        expectedError = {
+          type = "ThrownError";
+          msg = "^gen-prelude[.]resolve: 'hint' is not an option of this door; the options are closed [(]accepted: 'entries', 'isCanonical'[)] [(]in prelude[.]checkOptions[)]$";
         };
       };
     };
