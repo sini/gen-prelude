@@ -403,18 +403,6 @@ let
       required = spec.required or [ ];
       optional = spec.optional or [ ];
       open = spec.open or false;
-      # (v1.2, den-hoag-7gp66 premise 7) an already-built sibling door, consulted only under
-      # `open = true`; `guardedNames` is DERIVED from its `__contract`, never hand-written. Forcing
-      # `.__contract` never forces `.__functor`, so this can name the OUTER, already-built door of a
-      # chain (`optionsStep = dispatch;`) with no circular-evaluation problem, even though that
-      # door's own definition calls back into this record step: the two thunks are independent.
-      optionsStep = spec.optionsStep or null;
-      guardName = if optionsStep == null then null else optionsStep.__contract.name;
-      guardedNames =
-        if optionsStep == null then
-          [ ]
-        else
-          optionsStep.__contract.required ++ optionsStep.__contract.optional;
       contract = {
         inherit
           name
@@ -426,25 +414,38 @@ let
       publishedArgs =
         listToAttrs (map (n: nameValuePair n false) required)
         // listToAttrs (map (n: nameValuePair n true) optional);
+      # Every binding here is a thunk per door built, so the guard is bound only on the branch that
+      # reads it. (v1.2, den-hoag-7gp66 premise 7) `optionsStep` is an already-built sibling door,
+      # consulted only under `open = true`; `guardedNames` is DERIVED from its `__contract`, never
+      # hand-written. Forcing `.__contract` never forces `.__functor`, so this can name the OUTER,
+      # already-built door of a chain (`optionsStep = dispatch;`) with no circular-evaluation
+      # problem, even though that door's own definition calls back into this record step: the two
+      # thunks are independent.
       check =
         if open then
           (
-            if guardedNames == [ ] then
+            if (spec.optionsStep or null) == null then
               checkRequired name required
             else
-              record: checkGuarded name guardName guardedNames (checkRequired name required record)
+              let
+                g = spec.optionsStep.__contract;
+                guardedNames = g.required ++ g.optional;
+              in
+              if guardedNames == [ ] then
+                checkRequired name required
+              else
+                record: checkGuarded name g.name guardedNames (checkRequired name required record)
           )
         else if required == [ ] then
           checkOptions name optional
         else
           args: checkOptions name (required ++ optional) (checkRequired name required args);
-      pureOptions = !open && required == [ ];
     in
     body: {
       __contract = contract;
       __functionArgs = publishedArgs;
       __functor =
-        if pureOptions then
+        if !open && required == [ ] then
           _: args:
           if args == { } then
             body args
@@ -477,25 +478,23 @@ let
       }
       (
         s:
-        let
-          both = filter (f: elem f (s.optional or [ ])) (s.required or [ ]);
-          optionsStep = s.optionsStep or null;
-          guardName = if optionsStep == null then null else optionsStep.__contract.name;
-          guardedNames =
-            if optionsStep == null then
-              [ ]
-            else
-              optionsStep.__contract.required ++ optionsStep.__contract.optional;
-          requiredGuardOverlap = filter (f: elem f guardedNames) (s.required or [ ]);
-        in
-        if both != [ ] then
-          throw "gen-prelude.door: '${head both}' is both required and optional in the contract of '${s.name}' (in prelude.door)"
-        else if optionsStep != null && (s.open or false) != true then
-          throw "gen-prelude.door: 'optionsStep' guards a record's fields and is meaningless without open = true (in the contract of '${s.name}') (in prelude.door)"
-        else if requiredGuardOverlap != [ ] then
-          throw "gen-prelude.door: '${head requiredGuardOverlap}' is both required here and an option of '${guardName}' (in the contract of '${s.name}') (in prelude.door)"
-        else
+        if filter (f: elem f (s.optional or [ ])) (s.required or [ ]) != [ ] then
+          throw "gen-prelude.door: '${
+            head (filter (f: elem f (s.optional or [ ])) (s.required or [ ]))
+          }' is both required and optional in the contract of '${s.name}' (in prelude.door)"
+        else if !(s ? optionsStep) || s.optionsStep == null then
           mkDoor s
+        else if (s.open or false) != true then
+          throw "gen-prelude.door: 'optionsStep' guards a record's fields and is meaningless without open = true (in the contract of '${s.name}') (in prelude.door)"
+        else
+          let
+            g = s.optionsStep.__contract;
+            overlap = filter (f: elem f (g.required ++ g.optional)) (s.required or [ ]);
+          in
+          if overlap != [ ] then
+            throw "gen-prelude.door: '${head overlap}' is both required here and an option of '${g.name}' (in the contract of '${s.name}') (in prelude.door)"
+          else
+            mkDoor s
       );
 
   # `resolve { hint ? "name"; form ? "an attrset"; } { entries; isCanonical; } door ref` — a reference,
