@@ -1065,6 +1065,33 @@ in
         expr = p.hasPrefix "xy" "abc";
         expected = lib.hasPrefix "xy" "abc";
       };
+      # isStringLike: every arm (string, path, `outPath` set, `__toString` set, a derivation) and the
+      # refusals beside them (a plain set, a set whose `type` says derivation but has no `outPath`).
+      test-isStringLike =
+        let
+          values = [
+            "x"
+            ""
+            ./.
+            { outPath = "/x"; }
+            { __toString = _: "x"; }
+            (derivation {
+              name = "isStringLike";
+              builder = "/bin/sh";
+              system = "x86_64-linux";
+            })
+            { type = "derivation"; }
+            { }
+            1
+            null
+            [ ]
+            (x: x)
+          ];
+        in
+        {
+          expr = map p.isStringLike values;
+          expected = map lib.isStringLike values;
+        };
       test-hasInfix-match = {
         expr = p.hasInfix "bc" "abcd";
         expected = lib.hasInfix "bc" "abcd";

@@ -748,6 +748,9 @@ in
   # has one owner, `gen-graph.topoOrder`, which is Kahn 1962 over an accessor rather than
   # this depth-first scan.
   hasPrefix = pre: s: substring 0 (stringLength pre) s == pre;
+  # nixpkgs `lib.isStringLike` (lib/strings.nix), vendored verbatim: a string, a path, or a set
+  # `toString` coerces (an `outPath` set, which every derivation is, or a `__toString` set).
+  isStringLike = x: builtins.isString x || builtins.isPath x || x ? outPath || x ? __toString;
   # The door constructs (den-hoag-7gp66 P1; checkGuarded is v1.2), defined above.
   inherit
     checkGuarded

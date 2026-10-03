@@ -164,6 +164,8 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
   fold rebuilds each group at every step.
 - `concatMapStringsSep sep f xs` — `map f xs` joined by `sep`.
 - `hasPrefix pre s` — whether `s` starts with `pre`.
+- `isStringLike x` — whether `toString` coerces `x`: a string, a path, or a set with `outPath` or
+  `__toString` (every derivation).
 - `imap0 f xs` — `map` with a 0-based index: `f index element`.
 - `fix f` — least fixed point `let x = f x; in x`.
 - `max a b` — the larger of two comparables.
@@ -388,12 +390,12 @@ The `builtins` members are direct
 re-exports of the Nix `builtins` set. The vendored utilities are copied
 behavior-identically from `nixpkgs` `lib`:
 
-| Utility                                                                       | nixpkgs source                             |
-| ----------------------------------------------------------------------------- | ------------------------------------------ |
-| `genAttrs`, `filterAttrs`, `mapAttrsToList`, `nameValuePair`, `optionalAttrs` | `lib/attrsets.nix`                         |
-| `optional`, `last`, `init`, `unique`, `imap0`, `range`, `findFirst`           | `lib/lists.nix`                            |
-| `optionalString`, `concatMapStringsSep`, `hasPrefix`, `removePrefix`          | `lib/strings.nix`                          |
-| `fix`, `max`                                                                  | `lib/trivial.nix` / `lib/fixed-points.nix` |
+| Utility                                                                              | nixpkgs source                             |
+| ------------------------------------------------------------------------------------ | ------------------------------------------ |
+| `genAttrs`, `filterAttrs`, `mapAttrsToList`, `nameValuePair`, `optionalAttrs`        | `lib/attrsets.nix`                         |
+| `optional`, `last`, `init`, `unique`, `imap0`, `range`, `findFirst`                  | `lib/lists.nix`                            |
+| `optionalString`, `concatMapStringsSep`, `hasPrefix`, `removePrefix`, `isStringLike` | `lib/strings.nix`                          |
+| `fix`, `max`                                                                         | `lib/trivial.nix` / `lib/fixed-points.nix` |
 
 The `prelude-fidelity` test suite asserts each utility stays
 behavior-identical to its `nixpkgs.lib` original, so the vendoring cannot silently
