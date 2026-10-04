@@ -1110,6 +1110,21 @@ in
         expr = p.hasInfix "a.c" "abc";
         expected = lib.hasInfix "a.c" "abc";
       };
+
+      # ── the case classes outside the metacharacter set ──
+      #
+      # gen-harness vendors this `hasInfix` and holds its copy to nixpkgs, not to this file, so
+      # copy ≡ original is carried by composition only on cases both suites hold to nixpkgs.
+      # These are the harness table's classes the cells above never reached. The empty needle
+      # is its own branch (`infix == ""`), never the `split` path.
+      test-hasInfix-empty-needle = escCell "" "abc" true;
+      test-hasInfix-empty-needle-empty-haystack = escCell "" "" true;
+      test-hasInfix-empty-haystack = escCell "a" "" false;
+      test-hasInfix-needle-longer = escCell "abcd" "abc" false;
+      test-hasInfix-overlapping = escCell "aa" "aaaa" true;
+      test-hasInfix-newline-match = escCell "b\nc" "a\nb\nc" true;
+      # A newline is a character of the needle, not a separator the scan may skip.
+      test-hasInfix-newline-nomatch = escCell "b\nc" "abc" false;
       test-escapeRegex = {
         expr = p.escapeRegex "a.b*c{d,e}";
         expected = lib.escapeRegex "a.b*c{d,e}";
