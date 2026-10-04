@@ -396,6 +396,31 @@ let
   # binds `door spec` once and supplies only the body per call. A curried door is a chain: each record
   # step is its own door, and `functionArgs` reads the first step. `mkDoor` is the unchecked core;
   # the published `door` is itself a door over its own spec record.
+  # `contractOf spec` — a step's published contract, and through `next` every later step's
+  # (den-hoag-ak8va; OQ16 "nest", owner 2026-09-28): the range of the step's arrow contract,
+  # published as data under the same normal form as its domain (Findler & Felleisen 2002). It reads
+  # `name`, `required`, `optional`, `open` and `next` and nothing else, so a `next` spec naming its
+  # own `optionsStep` (the OUTER door, `optionsStep = options;`) is never forced here: that is the
+  # circular read the construction must not make. A POSITIONAL node, `{ positional = "<operand>";
+  # next; }`, is a plain-lambda step between two record steps (`memo.build`'s `engine`): its flat
+  # contract is the operand's name, and it publishes the record step behind it as its own `next`.
+  contractOf =
+    spec:
+    if spec ? positional then
+      {
+        inherit (spec) positional;
+        next = contractOf spec.next;
+      }
+    else
+      {
+        inherit (spec) name;
+        required = spec.required or [ ];
+        optional = spec.optional or [ ];
+        open = spec.open or false;
+      }
+      // (if (spec.next or null) == null then { } else { next = contractOf spec.next; });
+  # The first RECORD step a `next` chain reaches, past its positional nodes (or null).
+  recordNextOf = n: if n != null && n ? positional then recordNextOf n.next else n;
   mkDoor =
     spec:
     let
@@ -403,14 +428,6 @@ let
       required = spec.required or [ ];
       optional = spec.optional or [ ];
       open = spec.open or false;
-      contract = {
-        inherit
-          name
-          required
-          optional
-          open
-          ;
-      };
       publishedArgs =
         listToAttrs (map (n: nameValuePair n false) required)
         // listToAttrs (map (n: nameValuePair n true) optional);
@@ -442,28 +459,122 @@ let
           args: checkOptions name (required ++ optional) (checkRequired name required args);
     in
     body: {
-      __contract = contract;
+      __contract = contractOf spec;
       __functionArgs = publishedArgs;
+      # The functor is chosen once per door. A door without `next` keeps the one it had, so the drift
+      # guard costs nothing outside the chains that publish a next step.
       __functor =
-        if !open && required == [ ] then
-          _: args:
-          if args == { } then
-            body args
+        if (spec.next or null) == null then
+          (
+            if !open && required == [ ] then
+              _: args:
+              if args == { } then
+                body args
+              else
+                let
+                  a = check args;
+                in
+                seq a (body a)
+            else
+              _: args:
+              let
+                a = check args;
+              in
+              seq a (body a)
+          )
+        else
+          let
+            n = spec.next;
+            # The drift guard (OQ16 "nest"), the range half of the arrow contract, checked at the
+            # result. A record `next` admits a door named `next.name` and refuses anything else by
+            # name; it reads the result's WHNF and one attribute, which the caller of a chained
+            # step forces anyway to apply it. The NAME is the chain's family (every live chain reuses
+            # its step-1 name), so a same-name sibling is caught at `door spec` by the record step's
+            # anchor on its `optionsStep`, not here. A positional `next` admits a function.
+            guard =
+              if n ? positional then
+                r:
+                if isFunction r then
+                  r
+                else
+                  throw "${name}: the contract declares the positional step '${n.positional}', but the body returned a ${builtins.typeOf r} (in prelude.door)"
+              else
+                r:
+                if
+                  isAttrs r && r ? __functor && isAttrs (r.__contract or null) && r.__contract.name or null == n.name
+                then
+                  r
+                else
+                  throw "${name}: the contract declares the next step '${n.name}', but the body returned ${
+                    if isAttrs r && isAttrs (r.__contract or null) then
+                      "the door '${r.__contract.name or "?"}'"
+                    else
+                      "a ${builtins.typeOf r}"
+                  } (in prelude.door)";
+          in
+          if !open && required == [ ] then
+            _: args:
+            if args == { } then
+              guard (body args)
+            else
+              let
+                a = check args;
+              in
+              seq a (guard (body a))
           else
+            _: args:
             let
               a = check args;
             in
-            seq a (body a)
-        else
-          _: args:
-          let
-            a = check args;
-          in
-          seq a (body a);
+            seq a (guard (body a));
     };
+  # A `next` spec is checked at `door spec` like the door's own (closed, `name` required, no field
+  # both required and optional), recursively through its own `next`, and its refusals name WHERE it
+  # sits (`the next step of '<owner>'`), so a typo inside `next` is never read as one in the outer
+  # spec. A positional node is closed over `positional` and `next`, and both are required. Its
+  # `optionsStep` is NOT read: it names the outer door being built, and reading its contract here is
+  # a cycle.
+  checkNextSpec =
+    owner: n:
+    let
+      at = "gen-prelude.door (the next step of '${owner}')";
+    in
+    if isAttrs n && n ? positional then
+      let
+        c = checkOptions at [ "positional" "next" ] (checkRequired at [ "positional" "next" ] n);
+      in
+      if !isString c.positional then
+        throw "${at}: 'positional' must name the operand as a string, not a ${builtins.typeOf c.positional} (in prelude.door)"
+      else
+        checkNextSpec owner c.next
+    else
+      let
+        c = checkOptions at [
+          "name"
+          "required"
+          "optional"
+          "open"
+          "optionsStep"
+          "next"
+        ] (checkRequired at [ "name" ] n);
+        both = filter (f: elem f (c.optional or [ ])) (c.required or [ ]);
+      in
+      if both != [ ] then
+        throw "${at}: '${head both}' is both required and optional in the next step '${c.name}' (in prelude.door)"
+      else if (c.next or null) != null then
+        checkNextSpec c.name c.next
+      else
+        true;
   # The spec record is itself checked at `door spec` (closed, `name` required), and a field both
   # required and optional is refused by name there: the derived map would publish it optional
   # (`//` keeps the right side) while the check requires it, so map and check would disagree.
+  #
+  # THE ANCHOR (den-hoag-ak8va OQ-2, defaulted and reversible): a record step naming its
+  # `optionsStep` is the second step of that door's chain, so the options step must publish THIS
+  # step's contract as its next record step, exactly. An undeclared chain and a same-name drift
+  # (a `next` that names the family but not the step) are both refused here, once per `door spec`
+  # and never per application. It cannot see a chain whose record step names no `optionsStep`
+  # (`resolve`'s closed registry), which declares `next` by hand.
   door =
     mkDoor
       {
@@ -474,11 +585,14 @@ let
           "optional"
           "open"
           "optionsStep"
+          "next"
         ];
       }
       (
         s:
-        if filter (f: elem f (s.optional or [ ])) (s.required or [ ]) != [ ] then
+        if (s.next or null) != null && seq (checkNextSpec s.name s.next) false then
+          null
+        else if filter (f: elem f (s.optional or [ ])) (s.required or [ ]) != [ ] then
           throw "gen-prelude.door: '${
             head (filter (f: elem f (s.optional or [ ])) (s.required or [ ]))
           }' is both required and optional in the contract of '${s.name}' (in prelude.door)"
@@ -490,9 +604,14 @@ let
           let
             g = s.optionsStep.__contract;
             overlap = filter (f: elem f (g.required ++ g.optional)) (s.required or [ ]);
+            declared = recordNextOf (g.next or null);
           in
           if overlap != [ ] then
             throw "gen-prelude.door: '${head overlap}' is both required here and an option of '${g.name}' (in the contract of '${s.name}') (in prelude.door)"
+          else if declared == null then
+            throw "gen-prelude.door: '${g.name}' is this record step's optionsStep but declares no next step (in the contract of '${s.name}') (in prelude.door)"
+          else if declared != contractOf s then
+            throw "gen-prelude.door: '${g.name}' declares a next step that is not this record step's contract (in the contract of '${s.name}') (in prelude.door)"
           else
             mkDoor s
       );
@@ -526,20 +645,22 @@ let
   # extension data). Each is checked at its own application, catchably and by name, so a bad
   # registry is refused when `resolve opts registry` is formed, whether or not the returned door is
   # ever called (gen-memo eed0685's defect class). Both specs are bound once, outside any call.
-  resolveOptions = mkDoor {
-    name = "gen-prelude.resolve";
-    optional = [
-      "hint"
-      "form"
-    ];
-  };
-  resolveRegistry = mkDoor {
+  resolveRegistrySpec = {
     name = "gen-prelude.resolve";
     required = [
       "entries"
       "isCanonical"
     ];
   };
+  resolveOptions = mkDoor {
+    name = "gen-prelude.resolve";
+    optional = [
+      "hint"
+      "form"
+    ];
+    next = resolveRegistrySpec;
+  };
+  resolveRegistry = mkDoor resolveRegistrySpec;
   resolve = resolveOptions (
     o:
     let

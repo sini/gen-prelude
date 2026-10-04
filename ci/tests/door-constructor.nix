@@ -51,22 +51,24 @@ let
   # against its own options step: `optionsStep` names the OUTER, already-built door
   # (`guardedOptionsStep`), even though that door's own definition calls back into
   # `guardedRecord` — the contract thunk is independent of the functor thunk.
+  # The record step's spec is bound once and published as the options step's `next`
+  # (den-hoag-ak8va): a record step naming its `optionsStep` is refused unless that door declares it.
+  guardedRecordSpec = {
+    name = "gen-probe.guarded";
+    required = [ "rules" ];
+    open = true;
+    optionsStep = guardedOptionsStep;
+  };
   guardedOptionsStep = door {
     name = "gen-probe.guarded";
     optional = [ "exclusive" ];
+    next = guardedRecordSpec;
   } (o: guardedRecord o);
   guardedRecord =
     o:
-    door
-      {
-        name = "gen-probe.guarded";
-        required = [ "rules" ];
-        open = true;
-        optionsStep = guardedOptionsStep;
-      }
-      (r: {
-        inherit o r;
-      });
+    door guardedRecordSpec (r: {
+      inherit o r;
+    });
 
   derived =
     d:
@@ -325,6 +327,7 @@ in
         optional = true;
         open = true;
         optionsStep = true;
+        next = true;
       };
     };
     test-door-refuses-a-missing-name-at-application = {
@@ -462,7 +465,7 @@ in
           name = "gen-probe.door";
           requried = [ "a" ];
         } (x: x);
-        expectedError = pin "gen-prelude[.]door" "'requried' is not an option of this door; the options are closed [(]accepted: 'name', 'required', 'optional', 'open', 'optionsStep'[)] [(]in prelude[.]checkOptions[)]";
+        expectedError = pin "gen-prelude[.]door" "'requried' is not an option of this door; the options are closed [(]accepted: 'name', 'required', 'optional', 'open', 'optionsStep', 'next'[)] [(]in prelude[.]checkOptions[)]";
       };
       test-door-spec-overlap-named = {
         expr = door {

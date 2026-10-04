@@ -180,13 +180,22 @@ refuses, catchably, as `<door>: … (in prelude.<construct>)`:
 - `checkOptions door accepted opts` — a closed options set; an unknown field is refused by name.
 - `checkRequired door required record` — an open data record; a missing field is refused, an
   extra one admitted.
-- `door { name; required ? [ ]; optional ? [ ]; open ? false; } body` — the door constructor: a
+- `door { name; required ? [ ]; optional ? [ ]; open ? false; optionsStep ? null; next ? null; } body`
+  — the door constructor: a
   functor that publishes its field contract as data, `__contract` plus the
   derived `__functionArgs` (required ↦ `false`, optional ↦ `true`), and checks its argument at its
   own application — `checkRequired` for an `open` record, `checkOptions ∘ checkRequired` for a
   closed one — before `body` runs. A curried door is a chain of doors, one per record step. The spec record is itself
   checked at `door spec`: an unknown field, and a field both required and optional, are refused by
   name.
+  - `next` publishes the chain's later steps as data, `__contract.next` (OQ16 "nest"): the record
+    step's spec, bound once and used both as `next` and as `door recordSpec`. A positional step
+    between two record steps is the node `{ positional = "<operand>"; next = recordSpec; }`. A door
+    declaring `next` refuses, by name, a body whose result is not a door of `next.name` (or, behind a
+    positional node, not a function). `__functionArgs` still reads step 1 only.
+  - A record step naming its `optionsStep` is refused at `door spec` unless that door's `next`
+    reaches exactly this step's contract: an undeclared chain and a same-name drift both refuse once
+    per spec, never per application.
 - `resolve { hint ? "name"; form ? "an attrset"; } { entries; isCanonical; } door ref` — a
   reference written as an identifier (a string) or a declaration value, to its identifier. Options
   first, then the registry; both steps are doors. The `hint` field only locates candidates; the
