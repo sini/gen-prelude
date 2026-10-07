@@ -180,6 +180,14 @@ refuses, catchably, as `<door>: … (in prelude.<construct>)`:
 - `checkOptions door accepted opts` — a closed options set; an unknown field is refused by name.
 - `checkRequired door required record` — an open data record; a missing field is refused, an
   extra one admitted.
+- `checkGuarded door guardName guardedNames record` — a record field that is one of a sibling
+  options step's own names is refused by name.
+- `refusals` — the text of every refusal above, as values: each construct throws exactly
+  `refusals.<name>` of its own arguments (`optionsNotASet`, `unknownOption`, `recordNotASet`,
+  `missingField`, `guardedField`, `unknownReference`, `ambiguousDeclaration`,
+  `unregisteredDeclaration`, `unlocatedDeclaration`, `notAReference`). A consumer's test composes
+  its expected message through them with its own literal door, field and accepted set, so it keeps
+  every assertion and pins none of this library's wording.
 - `door { name; required ? [ ]; optional ? [ ]; open ? false; optionsStep ? null; next ? null; } body`
   — the door constructor: a
   functor that publishes its field contract as data, `__contract` plus the
