@@ -15,6 +15,7 @@ let
     checkGuarded
     checkOptions
     checkRequired
+    refusals
     resolve
     ;
   refused = v: !(builtins.tryEval (builtins.deepSeq v v)).success;
@@ -377,6 +378,74 @@ in
           type = "ThrownError";
           msg = "^gen-prelude[.]resolve: 'hint' is not an option of this door; the options are closed [(]accepted: 'entries', 'isCanonical'[)] [(]in prelude[.]checkOptions[)]$";
         };
+      };
+    };
+
+  # ONE SOURCE (den-hoag-7jltk): each checker throws EXACTLY `refusals.<name>` of its own arguments,
+  # the published text downstream cells compose their expectations through. The pair with
+  # `door-refusals` above is the oracle: a checker that stops throwing its renderer reds a cell
+  # here, and a renderer whose wording moves reds the literal pin there.
+  flake.testsError.refusal-texts =
+    let
+      exactly = m: {
+        type = "ThrownError";
+        msg = "^" + genPrelude.escapeRegex m + "$";
+      };
+      d = "gen-probe.door";
+    in
+    {
+      test-unknownOption = {
+        expr = checkOptions d [ "a" "b" ] {
+          a = 1;
+          colr = 1;
+        };
+        expectedError = exactly (refusals.unknownOption d [ "a" "b" ] "colr");
+      };
+      test-optionsNotASet = {
+        expr = checkOptions d [ "a" ] 3;
+        expectedError = exactly (refusals.optionsNotASet d [ "a" ] 3);
+      };
+      test-missingField = {
+        expr = checkRequired d [ "a" "b" ] { a = 1; };
+        expectedError = exactly (refusals.missingField d [ "a" "b" ] "b");
+      };
+      test-recordNotASet = {
+        expr = checkRequired d [ "a" ] null;
+        expectedError = exactly (refusals.recordNotASet d [ "a" ] null);
+      };
+      test-guardedField = {
+        expr = checkGuarded d "gen-probe.options" [ "maxDepth" ] { maxDepth = 1; };
+        expectedError = exactly (refusals.guardedField d "gen-probe.options" "maxDepth");
+      };
+      test-unknownReference = {
+        expr = r "nope";
+        expectedError = exactly (refusals.unknownReference d "nope");
+      };
+      test-notAReference = {
+        expr = r 1;
+        expectedError = exactly (refusals.notAReference d "an attrset" 1);
+      };
+      test-unlocatedDeclaration = {
+        expr = r { addr = "10.0.0.1"; };
+        expectedError = exactly (refusals.unlocatedDeclaration d "name" "an attrset");
+      };
+      test-unregisteredDeclaration = {
+        expr = r (entries.igloo // { addr = "evil"; });
+        expectedError = exactly (
+          refusals.unregisteredDeclaration d "igloo" [
+            "igloo"
+            "yurt"
+          ]
+        );
+      };
+      test-ambiguousDeclaration = {
+        expr = ambiguous;
+        expectedError = exactly (
+          refusals.ambiguousDeclaration d "twin" [
+            "twinA"
+            "twinB"
+          ]
+        );
       };
     };
 }

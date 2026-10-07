@@ -303,7 +303,49 @@ let
   # item 1). That is why a door takes `...` formals and calls one of these: a native closed formal
   # refuses an unknown argument, and a native required formal a missing one, past `tryEval`.
   # gen-prelude-original (no nixpkgs equivalent) → literal-expectation tested.
-  quoteNames = names: concatStringsSep ", " (map (n: "'${n}'") names);
+  #
+  # `refusals` — THE TEXT OF EVERY REFUSAL A DOOR'S CALLER CAN MEET, as values (den-hoag-7jltk). Each
+  # checker below throws exactly `refusals.<name> <its own arguments>`, so the published text and the
+  # thrown text are one expression and cannot drift. A downstream cell composes its expected message
+  # through these with its OWN literal door, field and accepted set, and so keeps every assertion
+  # while pinning none of this library's wording. One binding, never forced on a success path: a
+  # checker reads it only inside its `throw`. Each renders a caller value by its type alone, as
+  # gen-graph's `notAnIdentifier` does: `typeOf` is total, so the refusal cannot itself abort.
+  refusals =
+    let
+      quoteNames = names: concatStringsSep ", " (map (n: "'${n}'") names);
+    in
+    {
+      optionsNotASet =
+        door: accepted: v:
+        "${door}: the options must be an attrset, not a ${builtins.typeOf v} (accepted: ${quoteNames accepted}) (in prelude.checkOptions)";
+      unknownOption =
+        door: accepted: field:
+        "${door}: '${field}' is not an option of this door; the options are closed (accepted: ${quoteNames accepted}) (in prelude.checkOptions)";
+      recordNotASet =
+        door: required: v:
+        "${door}: the argument must be an attrset, not a ${builtins.typeOf v} (required: ${quoteNames required}) (in prelude.checkRequired)";
+      missingField =
+        door: required: field:
+        "${door}: required field '${field}' is missing (required: ${quoteNames required}) (in prelude.checkRequired)";
+      guardedField =
+        door: guardName: field:
+        "${door}: '${field}' is an option of ${guardName}, not a field of this record (in prelude.checkGuarded)";
+      unknownReference =
+        door: id: "${door}: reference '${id}' names no entry of the registry (in prelude.resolve)";
+      ambiguousDeclaration =
+        door: name: candidates:
+        "${door}: declaration '${name}' is ambiguous: it matches more than one entry of the registry (candidates: ${quoteNames candidates}) (in prelude.resolve)";
+      unregisteredDeclaration =
+        door: name: available:
+        "${door}: declaration '${name}' is not a member of the registry (available: ${quoteNames available}) (in prelude.resolve)";
+      unlocatedDeclaration =
+        door: hint: form:
+        "${door}: a declaration must carry a string '${hint}' to locate it (expected ${form}) (in prelude.resolve)";
+      notAReference =
+        door: form: v:
+        "${door}: expected an identifier (a string) or a declaration (${form}), got a ${builtins.typeOf v} (in prelude.resolve)";
+    };
 
   # `checkOptions door accepted opts` — an options set is CLOSED: every field is optional, and one
   # outside `accepted` is refused by name, with the accepted set named. A pass-through, so it cannot
@@ -311,15 +353,12 @@ let
   checkOptions =
     door: accepted: opts:
     if !isAttrs opts then
-      throw "${door}: the options must be an attrset, not a ${builtins.typeOf opts} (accepted: ${quoteNames accepted}) (in prelude.checkOptions)"
+      throw (refusals.optionsNotASet door accepted opts)
     else
       let
         unknown = filter (f: !elem f accepted) (attrNames opts);
       in
-      if unknown == [ ] then
-        opts
-      else
-        throw "${door}: '${head unknown}' is not an option of this door; the options are closed (accepted: ${quoteNames accepted}) (in prelude.checkOptions)";
+      if unknown == [ ] then opts else throw (refusals.unknownOption door accepted (head unknown));
 
   # `checkRequired door required record` — a data record is OPEN (width subtyping, R5): a missing
   # field is refused by name, and an extra one is admitted and never reported. That silence is R5's
@@ -328,15 +367,12 @@ let
   checkRequired =
     door: required: record:
     if !isAttrs record then
-      throw "${door}: the argument must be an attrset, not a ${builtins.typeOf record} (required: ${quoteNames required}) (in prelude.checkRequired)"
+      throw (refusals.recordNotASet door required record)
     else
       let
         missing = filter (f: !(record ? ${f})) required;
       in
-      if missing == [ ] then
-        record
-      else
-        throw "${door}: required field '${head missing}' is missing (required: ${quoteNames required}) (in prelude.checkRequired)";
+      if missing == [ ] then record else throw (refusals.missingField door required (head missing));
 
   # `checkGuarded door guardName guardedNames record` — a data record's field is refused BY NAME
   # when it is also one of a SIBLING options step's own declared names (den-hoag-7gp66 v1.2,
@@ -351,10 +387,7 @@ let
     let
       hits = filter (f: elem f guardedNames) (attrNames record);
     in
-    if hits == [ ] then
-      record
-    else
-      throw "${door}: '${head hits}' is an option of ${guardName}, not a field of this record (in prelude.checkGuarded)";
+    if hits == [ ] then record else throw (refusals.guardedField door guardName (head hits));
 
   # ── the readers (den-hoag-7gp66 P2-OQ15 arm (i)) ──
   # nixpkgs `lib.isFunction` / `lib.functionArgs` (lib/trivial.nix), vendored verbatim: FUNCTOR-AWARE.
@@ -682,14 +715,11 @@ let
         );
       in
       door: ref:
-      let
-        refuse = msg: throw "${door}: ${msg} (in prelude.resolve)";
-      in
       if isString ref then
         let
           id = unsafeDiscardStringContext ref;
         in
-        if entries ? ${id} then id else refuse "reference '${id}' names no entry of the registry"
+        if entries ? ${id} then id else throw (refusals.unknownReference door id)
       else if isAttrs ref && hintOf ref != null then
         let
           h = hintOf ref;
@@ -698,15 +728,15 @@ let
         if entries ? ${h} && isCanonical ref h then
           h
         else if length found > 1 then
-          refuse "declaration '${h}' is ambiguous: it matches more than one entry of the registry (candidates: ${quoteNames found})"
+          throw (refusals.ambiguousDeclaration door h found)
         else if found != [ ] then
           head found
         else
-          refuse "declaration '${h}' is not a member of the registry (available: ${quoteNames (attrNames entries)})"
+          throw (refusals.unregisteredDeclaration door h (attrNames entries))
       else if isAttrs ref then
-        refuse "a declaration must carry a string '${hint}' to locate it (expected ${form})"
+        throw (refusals.unlocatedDeclaration door hint form)
       else
-        refuse "expected an identifier (a string) or a declaration (${form}), got a ${builtins.typeOf ref}"
+        throw (refusals.notAReference door form ref)
     )
   );
 in
@@ -872,8 +902,10 @@ in
   # nixpkgs `lib.isStringLike` (lib/strings.nix), vendored verbatim: a string, a path, or a set
   # `toString` coerces (an `outPath` set, which every derivation is, or a `__toString` set).
   isStringLike = x: builtins.isString x || builtins.isPath x || x ? outPath || x ? __toString;
-  # The door constructs (den-hoag-7gp66 P1; checkGuarded is v1.2), defined above.
+  # The door constructs (den-hoag-7gp66 P1; checkGuarded is v1.2), defined above, and the text of
+  # their refusals (den-hoag-7jltk), which each throws verbatim.
   inherit
+    refusals
     checkGuarded
     checkOptions
     checkRequired
