@@ -328,6 +328,7 @@ in
         open = true;
         optionsStep = true;
         next = true;
+        retired = true;
       };
     };
     test-door-refuses-a-missing-name-at-application = {
@@ -465,7 +466,7 @@ in
           name = "gen-probe.door";
           requried = [ "a" ];
         } (x: x);
-        expectedError = pin "gen-prelude[.]door" "'requried' is not an option of this door; the options are closed [(]accepted: 'name', 'required', 'optional', 'open', 'optionsStep', 'next'[)] [(]in prelude[.]checkOptions[)]";
+        expectedError = pin "gen-prelude[.]door" "'requried' is not an option of this door; the options are closed [(]accepted: 'name', 'required', 'optional', 'open', 'optionsStep', 'next', 'retired'[)] [(]in prelude[.]checkOptions[)]";
       };
       test-door-spec-overlap-named = {
         expr = door {

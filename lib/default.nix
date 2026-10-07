@@ -322,6 +322,9 @@ let
       unknownOption =
         door: accepted: field:
         "${door}: '${field}' is not an option of this door; the options are closed (accepted: ${quoteNames accepted}) (in prelude.checkOptions)";
+      retiredOption =
+        door: replacement: field:
+        "${door}: '${field}' is a retired option of this door; its replacement is ${replacement} (in prelude.checkOptions)";
       recordNotASet =
         door: required: v:
         "${door}: the argument must be an attrset, not a ${builtins.typeOf v} (required: ${quoteNames required}) (in prelude.checkRequired)";
@@ -350,15 +353,29 @@ let
   # `checkOptions door accepted opts` — an options set is CLOSED: every field is optional, and one
   # outside `accepted` is refused by name, with the accepted set named. A pass-through, so it cannot
   # be written and then not called. A non-set is refused before `attrNames`, which aborts on one.
-  checkOptions =
-    door: accepted: opts:
+  checkOptions = checkOptionsRetiring { };
+  # The same check with a door's RETIRED options (den-hoag-7gp66 P2 L5, orchestrator-ruled Q1 (C)):
+  # `retired` maps a field the door once accepted to the text naming its replacement, so an unknown
+  # field that is retired is refused naming that replacement — the grammar's migration form, "the
+  # old name becomes a refused-by-name alias that names the new name" — and any other is refused as
+  # before. A retired field is preferred over a plain unknown one in the same call, since it is the
+  # one whose remedy is known. Read only on the refusal path, so a door that accepts its argument
+  # pays nothing for it. Reached through `door`'s `retired` spec field.
+  checkOptionsRetiring =
+    retired: door: accepted: opts:
     if !isAttrs opts then
       throw (refusals.optionsNotASet door accepted opts)
     else
       let
         unknown = filter (f: !elem f accepted) (attrNames opts);
+        old = filter (f: retired ? ${f}) unknown;
       in
-      if unknown == [ ] then opts else throw (refusals.unknownOption door accepted (head unknown));
+      if unknown == [ ] then
+        opts
+      else if old != [ ] then
+        throw (refusals.retiredOption door retired.${head old} (head old))
+      else
+        throw (refusals.unknownOption door accepted (head unknown));
 
   # `checkRequired door required record` — a data record is OPEN (width subtyping, R5): a missing
   # field is refused by name, and an extra one is admitted and never reported. That silence is R5's
@@ -451,6 +468,7 @@ let
         optional = spec.optional or [ ];
         open = spec.open or false;
       }
+      // (if (spec.retired or { }) == { } then { } else { inherit (spec) retired; })
       // (if (spec.next or null) == null then { } else { next = contractOf spec.next; });
   # The first RECORD step a `next` chain reaches, past its positional nodes (or null).
   recordNextOf = n: if n != null && n ? positional then recordNextOf n.next else n;
@@ -461,6 +479,7 @@ let
       required = spec.required or [ ];
       optional = spec.optional or [ ];
       open = spec.open or false;
+      retired = spec.retired or { };
       publishedArgs =
         listToAttrs (map (n: nameValuePair n false) required)
         // listToAttrs (map (n: nameValuePair n true) optional);
@@ -487,9 +506,9 @@ let
                 record: checkGuarded name g.name guardedNames (checkRequired name required record)
           )
         else if required == [ ] then
-          checkOptions name optional
+          checkOptionsRetiring retired name optional
         else
-          args: checkOptions name (required ++ optional) (checkRequired name required args);
+          args: checkOptionsRetiring retired name (required ++ optional) (checkRequired name required args);
     in
     body: {
       __contract = contractOf spec;
@@ -619,12 +638,23 @@ let
           "open"
           "optionsStep"
           "next"
+          "retired"
         ];
       }
       (
         s:
+        let
+          retired = s.retired or { };
+          stillAccepted = filter (f: retired ? ${f}) ((s.required or [ ]) ++ (s.optional or [ ]));
+        in
         if (s.next or null) != null && seq (checkNextSpec s.name s.next) false then
           null
+        else if !isAttrs retired || !all isString (attrValues retired) then
+          throw "gen-prelude.door: 'retired' must map each retired field to the text naming its replacement (in the contract of '${s.name}') (in prelude.door)"
+        else if retired != { } && (s.open or false) then
+          throw "gen-prelude.door: 'retired' names options a closed door refuses, and an open record admits every extra field (in the contract of '${s.name}') (in prelude.door)"
+        else if stillAccepted != [ ] then
+          throw "gen-prelude.door: '${head stillAccepted}' is both retired and accepted in the contract of '${s.name}' (in prelude.door)"
         else if filter (f: elem f (s.optional or [ ])) (s.required or [ ]) != [ ] then
           throw "gen-prelude.door: '${
             head (filter (f: elem f (s.optional or [ ])) (s.required or [ ]))
