@@ -183,12 +183,12 @@ refuses, catchably, as `<door>: … (in prelude.<construct>)`:
 - `checkGuarded door guardName guardedNames record` — a record field that is one of a sibling
   options step's own names is refused by name.
 - `refusals` — the text of every refusal above, as values: each construct throws exactly
-  `refusals.<name>` of its own arguments (`optionsNotASet`, `unknownOption`, `retiredOption`, `recordNotASet`,
+  `refusals.<name>` of its own arguments (`optionsNotASet`, `unknownOption`, `recordNotASet`,
   `missingField`, `guardedField`, `unknownReference`, `ambiguousDeclaration`,
   `unregisteredDeclaration`, `unlocatedDeclaration`, `notAReference`). A consumer's test composes
   its expected message through them with its own literal door, field and accepted set, so it keeps
   every assertion and pins none of this library's wording.
-- `door { name; required ? [ ]; optional ? [ ]; open ? false; optionsStep ? null; next ? null; retired ? { }; } body`
+- `door { name; required ? [ ]; optional ? [ ]; open ? false; optionsStep ? null; next ? null; } body`
   — the door constructor: a
   functor that publishes its field contract as data, `__contract` plus the
   derived `__functionArgs` (required ↦ `false`, optional ↦ `true`), and checks its argument at its
@@ -204,10 +204,6 @@ refuses, catchably, as `<door>: … (in prelude.<construct>)`:
   - A record step naming its `optionsStep` is refused at `door spec` unless that door's `next`
     reaches exactly this step's contract: an undeclared chain and a same-name drift both refuse once
     per spec, never per application.
-  - `retired = { <old> = "<its replacement>"; }` on a closed door refuses an option the door once
-    accepted by name, naming its replacement, where any other unknown field keeps the plain
-    refusal; the retired names are published as `__contract.retired`. A retired field still
-    accepted, or `retired` on an open record, is refused at `door spec`.
 - `resolve { hint ? "name"; form ? "an attrset"; } { entries; isCanonical; } door ref` — a
   reference written as an identifier (a string) or a declaration value, to its identifier. Options
   first, then the registry; both steps are doors. The `hint` field only locates candidates; the

@@ -328,7 +328,6 @@ in
         open = true;
         optionsStep = true;
         next = true;
-        retired = true;
       };
     };
     test-door-refuses-a-missing-name-at-application = {
@@ -466,7 +465,18 @@ in
           name = "gen-probe.door";
           requried = [ "a" ];
         } (x: x);
-        expectedError = pin "gen-prelude[.]door" "'requried' is not an option of this door; the options are closed [(]accepted: 'name', 'required', 'optional', 'open', 'optionsStep', 'next', 'retired'[)] [(]in prelude[.]checkOptions[)]";
+        expectedError = pin "gen-prelude[.]door" "'requried' is not an option of this door; the options are closed [(]accepted: 'name', 'required', 'optional', 'open', 'optionsStep', 'next'[)] [(]in prelude[.]checkOptions[)]";
+      };
+      # A door carries no retired fields (owner, 2026-09-28: pre-release, a retired name is carried
+      # nowhere): `retired` is an unknown spec field like any other, so a door's former option is
+      # refused by the plain unknown-option check, with no replacement text (den-hoag-c54n4).
+      test-door-spec-retired-is-an-unknown-option = {
+        expr = door {
+          name = "gen-probe.door";
+          optional = [ "keySemantics" ];
+          retired.classes = "`keySemantics`";
+        } (x: x);
+        expectedError = pin "gen-prelude[.]door" "'retired' is not an option of this door; the options are closed [(]accepted: 'name', 'required', 'optional', 'open', 'optionsStep', 'next'[)] [(]in prelude[.]checkOptions[)]";
       };
       test-door-spec-overlap-named = {
         expr = door {
