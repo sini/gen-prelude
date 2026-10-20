@@ -106,7 +106,7 @@ non-flake entry text.
 ## API Reference
 
 Every name below is a top-level member of the lib attrset (verified against
-`nix eval .#lib --apply builtins.attrNames`). 58 members total.
+`nix eval .#lib --apply builtins.attrNames`). 69 members total.
 
 ### builtins re-exports
 
@@ -127,6 +127,29 @@ Semantics are exactly those of the corresponding `builtins.*`.
   every `door` below) is a function, and its published map is its arguments; on a lambda they
   answer exactly what the builtins answer. They are NOT the `builtins` of the same names, which
   read a functor as a non-function and abort uncatchably on one.
+
+- `patternOf f` — the shape of a function's pattern, `{ kind; formals; ellipsis; }`, every field
+  always present. `kind` is `"named"` for `x:`, `"set"` for `{ … }:` (with or without `@`), and
+  `"primop"` for a builtin or a primop application. `formals` is `functionArgs f`, and `ellipsis` is
+  true exactly when a set pattern carries `...`. It answers what `functionArgs` cannot: that is
+  `{ }` for `x:`, `{ }:` and `{ ... }:` alike. Functor-aware by the same rule: `kind` and
+  `ellipsis` describe the lambda the call applies, `f.__functor f`, while for a functor publishing
+  `__functionArgs`, `formals` is that published claim, so the two may describe different things
+  (a `door` reads `"named"` with its derived formals). Outside its domain (not a function by
+  `isFunction`, or `__functionArgs` not an attrset of booleans) it refuses with a catchable
+  `throw "gen-prelude.patternOf: …"`.
+
+  **It depends on `builtins.toXML`**, the one call in the library (`lib/pattern-shape.nix`,
+  den-hoag-a48xt arm (a)): no builtin exposes a function's `...`, so the pattern is read from the
+  evaluator's XML rendering of the lambda, which carries the pattern and never the body or
+  defaults. The parse is anchored on that rendering's head element (`<varpat name="…" />`,
+  `<attrspat>` with ` ellipsis="1"` then ` name="…"`, or `<unevaluated />`) and reads only a
+  bounded prefix. **Failure mode:** if an evaluator changes the rendering, every `patternOf`
+  refuses by name and never misreads, and the `pattern-shape` rendering-pin cell reds in CI first.
+  **Option (c), not taken** (den-hoag-t5hli): read no XML and treat every `functionArgs == { }`
+  shape alike. It needs no rendering, but it cannot tell `x:` and `{ ... }:` (which accept any set)
+  from `{ }:` (which accepts only the empty one), so a consumer has to hand all three the same
+  argument.
 
 ### Vendored pure utilities
 

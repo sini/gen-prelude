@@ -407,6 +407,8 @@ let
     f:
     builtins.isFunction f
     || (f ? __functor && builtins.isFunction f.__functor && builtins.isFunction (f.__functor f));
+  # `patternOf`, the third reader, lives in its own unit beside the one XML binding it reads through.
+  inherit (import ./pattern-shape.nix { inherit isFunction functionArgs; }) patternOf;
 
   # `door { name; required ? [ ]; optional ? [ ]; open ? false; } body` — a published door that
   # takes a RECORD step and publishes its field contract AS DATA (den-hoag-49yxv, defaulted and
@@ -985,8 +987,9 @@ in
     door
     resolve
     ;
-  # The functor-aware readers (nixpkgs `lib.isFunction` / `lib.functionArgs`), defined above.
-  inherit isFunction functionArgs;
+  # The functor-aware readers (nixpkgs `lib.isFunction` / `lib.functionArgs`), defined above, and
+  # `patternOf` (`lib/pattern-shape.nix`).
+  inherit isFunction functionArgs patternOf;
   # Drop-in for nixpkgs lib.hasInfix / lib.escapeRegex, but linear (no `.*` backtracking).
   inherit hasInfix escapeRegex;
   imap0 = f: xs: genList (i: f i (elemAt xs i)) (length xs);

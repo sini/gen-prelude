@@ -131,6 +131,21 @@ let
     name = "<injected>";
     code = stripComments "  foo = mkOption { type = lib.types.str; }; # nixpkgs, in a comment";
   };
+
+  # xmlCalls : [ { name; code; } ] -> [ { name; calls; } ], the sources that call `toXML`, by count.
+  xmlCalls =
+    srcs:
+    lib.filter (s: s.calls > 0) (
+      map (src: {
+        inherit (src) name;
+        calls = lib.length (lib.filter lib.isList (builtins.split "toXML" src.code));
+      }) srcs
+    );
+  # A second call, and a third mention in a comment that the strip must drop.
+  secondXmlCall = {
+    name = "<injected>";
+    code = stripComments "  shape = builtins.toXML f; # toXML, in a comment";
+  };
 in
 {
   # The library is clean. That `[ ]` is not evidence by itself — a scan over no files, or over dead
@@ -143,12 +158,41 @@ in
   # WHICH files the scan reads, pinned at the `readDir` rather than after the `.nix` filter, so the
   # subject is total: a subdirectory added under `lib/` — which the flat read would not descend into
   # and the filter would silently drop — arrives here as a RED instead of as unscanned code. This
-  # library is one file on purpose; growing it is a decision that gets looked at.
+  # library is one file on purpose; growing it is a decision that gets looked at. The second file is
+  # that decision: `pattern-shape.nix` holds the one XML binding as its own unit, so its parse is
+  # reachable by ci (den-hoag-gtwxg C2).
   flake.tests.purity.test-scan-subject-is-the-library-tree = {
     expr = builtins.readDir libDir;
     expected = {
       "default.nix" = "regular";
+      "pattern-shape.nix" = "regular";
     };
+  };
+
+  # ★ ONE XML BINDING (den-hoag-a48xt's condition): the library's code names `toXML` exactly once,
+  # in `lib/pattern-shape.nix`. Counted over comment-stripped code, because that binding's own comment
+  # names the call it documents. The planted control below is what shows this count can rise.
+  flake.tests.purity.test-one-xml-call = {
+    expr = xmlCalls sources;
+    expected = [
+      {
+        name = "lib/pattern-shape.nix";
+        calls = 1;
+      }
+    ];
+  };
+  flake.tests.purity.test-control-xml-count-catches-a-second-call = {
+    expr = xmlCalls (sources ++ [ secondXmlCall ]);
+    expected = [
+      {
+        name = "lib/pattern-shape.nix";
+        calls = 1;
+      }
+      {
+        name = "<injected>";
+        calls = 1;
+      }
+    ];
   };
 
   # And that the labels carry their files' text. The cell above pins membership — WHICH files the
@@ -161,7 +205,10 @@ in
   # replaced by the other's, leaves that cell GREEN and reds this one.
   flake.tests.purity.test-scan-reads-are-live = {
     expr = liveReads;
-    expected = [ "lib/default.nix" ];
+    expected = [
+      "lib/default.nix"
+      "lib/pattern-shape.nix"
+    ];
   };
 
   # THE DEPENDENCY BUDGET IS ZERO, pinned as the flake's own attribute names rather than as a token
