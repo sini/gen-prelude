@@ -271,7 +271,7 @@ explicit `keyOf` projection. `sort` — the primitive comparator sort — stays 
 
 ### gen-prelude-original (no nixpkgs equivalent)
 
-Three helpers with no `nixpkgs.lib` counterpart, so they are covered by the
+Four helpers with no `nixpkgs.lib` counterpart, so they are covered by the
 literal-expectation `prelude` suite rather than `prelude-fidelity`:
 
 - `indexOf xs x` — first position of `x` in `xs` (structural `==`), or `-1` if absent.
@@ -311,6 +311,16 @@ literal-expectation `prelude` suite rather than `prelude-fidelity`:
     { base = indeg0; residue = { }; width = 0; ready = heapOfSources; emitted = [ ]; count = 0; }
     keys
   ```
+
+- `absorb { fn; subject; at; } kept twins` — the quotient rule (den-hoag-kunjm): a collapse of
+  data equal under `==` but differing in string context keeps the union of the twins'
+  dependency edges. A string `kept` carries it by its context. A non-string `kept` cannot, so a
+  collapse that would lose an edge is refused, and so is any collapse holding a coercible set
+  that is not a derivation and has attributes beside its coercion (an edge the walk cannot
+  read). The refusal is `throw "${fn}: …"` with `fn` the caller's full door name, so it names
+  the door the caller invoked. The caller owes that `kept` and the twins already passed its own
+  walk. One home for every `==`-collapsing site (gen-view's dedup and set union, gen-scope's
+  `set` and `mergeAttrsDeep`), cells in `ci/tests/absorb.nix`.
 
 - `dedupByKey getKey list` — first-occurrence-wins dedup by `getKey x`, order-preserving.
   A `null` key is **always kept and never deduplicated** — the safe direction against

@@ -743,6 +743,93 @@ let
         throw (refusals.notAReference door form ref)
     )
   );
+
+  # ── THE QUOTIENT RULE (den-hoag-kunjm) ──────────────────────────────────────────────────────
+  # A collapse of data equal under `==` but differing in string context identifies nodes, and a
+  # quotient keeps the incident edges it can read: the kept datum carries the UNION of its twins'
+  # dependency edges where it can carry them, and a collapse that would visibly lose one is refused.
+  # One home for every `==`-collapsing site in the roster (gen-view's dedup and set union,
+  # gen-scope's `set` and `mergeAttrsDeep` folds), so the rule is stated once (den-hoag-izo7a).
+
+  # `edgesOf v` — the dependency edges of `v`, as one empty string carrying their union. It stops
+  # at a coercion, in `toJSON`'s priority: a `__toString` set is read through its string, else a
+  # set with `outPath` through it (so a derivation, which refers to itself, is never walked).
+  # Functions, paths, numbers, bools and null carry no context.
+  edgesOf =
+    v:
+    if isString v then
+      substring 0 0 v
+    else if isList v then
+      concatStringsSep "" (map edgesOf v)
+    else if isAttrs v then
+      if v ? __toString then
+        substring 0 0 (toString v)
+      else if v ? outPath then
+        edgesOf v.outPath
+      else
+        concatStringsSep "" (map (n: edgesOf v.${n}) (attrNames v))
+    else
+      "";
+
+  # `uncertified v` — whether `v` holds a coercible set that is not a derivation and has attributes
+  # besides its coercion. `edgesOf` stops at the coercion, so a context in such a sibling is an edge
+  # it cannot read, and no collapse of `v` can certify that it carries it. The coercion is the one
+  # `edgesOf` reads, in `toJSON`'s priority, so the `outPath` of a set that also has `__toString` is
+  # a sibling like any other, and an `outPath` that is itself a set is followed, as `edgesOf`
+  # follows it. A derivation is a set typed `"derivation"` WITH an `outPath` (Nix `==` compares one
+  # by its `outPath`); its other attributes are not read, so a context held beside a derivation's
+  # `outPath` is dropped silently, a stated boundary. Reading a sibling instead is not total (a
+  # flake input recurses, a pointer-shared cyclic set overflows, both uncatchably). A SHAPE CHECK:
+  # it reads attribute NAMES, and `type` only of a set with an `outPath` (the read Nix `==` makes to
+  # decide a derivation); it forces no other sibling's value.
+  uncertified =
+    v:
+    if isList v then
+      any uncertified v
+    else if isAttrs v then
+      if v ? outPath && (v.type or null) == "derivation" then
+        false
+      else if v ? __toString then
+        attrNames (removeAttrs v [ "__toString" ]) != [ ]
+      else if v ? outPath then
+        attrNames (removeAttrs v [ "outPath" ]) != [ ] || uncertified v.outPath
+      else
+        any (n: uncertified v.${n}) (attrNames v)
+    else
+      false;
+
+  # `absorb { fn; subject; at; } kept twins` — `kept` carrying its `==`-equal `twins`' edges, or a
+  # refusal. A string carries the union by its context, which is Nix's own concatenation. A
+  # non-string cannot, so a collapse that would lose an edge is refused; so is any collapse holding
+  # a shape whose edges cannot be read (`uncertified`), whatever it carries.
+  #
+  # `fn` is the caller's FULL door name and is thrown verbatim (`"${fn}: …"`), so the refusal names
+  # the door the caller invoked and never this library (R6). The CALLER owes the precondition that
+  # `kept` and every twin are already admitted by its own walk: the edge walk forces what `==`
+  # forced and follows the coercions `toJSON` reads, so it is total exactly where the caller's `==`
+  # was, and a value the caller's walk would refuse must not reach it.
+  absorb =
+    {
+      fn,
+      subject,
+      at,
+    }:
+    kept: twins:
+    let
+      lost = concatStringsSep "" (map edgesOf twins);
+    in
+    if twins == [ ] then
+      kept
+    else if uncertified kept then
+      throw "${fn}: ${subject} collapses a datum${at} holding a coercible set that is not a derivation and has attributes besides its coercion; a store dependency there is an edge the collapse cannot read, so it cannot carry it"
+    else if !(builtins.hasContext lost) then
+      kept
+    else if isString kept then
+      builtins.appendContext kept (builtins.getContext lost)
+    else if builtins.getContext (edgesOf kept + lost) == builtins.getContext (edgesOf kept) then
+      kept
+    else
+      throw "${fn}: ${subject} collapses a non-string datum${at} with ${toString (length twins)} `==`-equal twin(s) whose store dependencies it does not carry (${concatStringsSep ", " (attrNames (removeAttrs (builtins.getContext lost) (attrNames (builtins.getContext (edgesOf kept)))))}); a collapse keeps its twins' dependency edges, and only a string can carry the union";
 in
 {
   # ── builtins re-exports (aliases; zero new code) ──
@@ -840,6 +927,11 @@ in
   # The stack-safe encoding for a loop that carries state, as findFirstIndex is for a scan.
   # gen-prelude-original (no nixpkgs equivalent) → literal-expectation tested, not fidelity.
   inherit iterateBounded;
+
+  # absorb site kept twins — the quotient rule's one construction (den-hoag-kunjm): `kept` carrying
+  # its `==` twins' store-context edges, or a refusal thrown under the caller's own door name
+  # (`site.fn`). `edgesOf` and `uncertified` under it are internal. gen-prelude-original.
+  inherit absorb;
 
   # renderValue v — TOTAL RENDERING OF A CALLER VALUE INSIDE A REFUSAL. The one shared renderer
   # (den-hoag-shared-refusal-renderer-6wtos) behind gen-scope's `resolveClaims` refusals, every
