@@ -135,25 +135,34 @@ Semantics are exactly those of the corresponding `builtins.*`.
   `{ }` for `x:`, `{ }:` and `{ ... }:` alike. Functor-aware by the same rule: `kind` and
   `ellipsis` describe the lambda the call applies, `f.__functor f`, while for a functor publishing
   `__functionArgs`, `formals` is that published claim, so the two may describe different things
-  (a `door` reads `"named"` with its derived formals). Outside its domain (not a function by
-  `isFunction`, `__functionArgs` not an attrset of booleans, or a pattern whose head does not close
-  inside the parse's first 1024 characters, which an `@`-name of about 930 characters reaches) it
-  refuses with a catchable `throw "gen-prelude.patternOf: …"`. **Cost:** about +12.3 thunks and
-  +6.6 µs per application over `functionArgs` (upstream Nix, derived from 100000-application
-  totals), against +3 thunks and +4.5 µs for a `door` call; a
-  consumer pays it where it reads a pattern.
+  (a `door` reads `"named"` with its derived formals). Its domain is `isFunction` values: a
+  non-function is refused at the record itself. The two sources are independent, so every other
+  refusal fires only where its field is read: `kind` and `ellipsis` refuse a rendering the parse
+  does not read, and `formals` refuses a functor whose `__functionArgs` is not an attrset of
+  booleans. A reader of `kind` is never refused on `formals`, nor a reader of `formals` on the
+  rendering. Each refusal is a catchable `throw "gen-prelude.patternOf: …"`. **Cost**, per
+  application over `functionArgs`, derived from 100000-application totals on upstream Nix and
+  Determinate, which count the same thunks: reading `kind` costs +12.0 thunks and about 6 µs,
+  reading `formals` alone +6.5 thunks and about 1 µs, since it never renders the lambda, and the
+  whole record +13.3 thunks; a `door` call costs +3 thunks and +4.5 µs. A consumer pays it where it
+  reads a pattern.
 
   **It depends on `builtins.toXML`**, the one call in the library (`lib/pattern-shape.nix`):
   no builtin exposes a function's `...`, so the pattern is read from the
   evaluator's XML rendering of the lambda, which carries the pattern and never the body or
   defaults. The parse is anchored on that rendering's head element (`<varpat name="…" />`,
-  `<attrspat>` with ` ellipsis="1"` then ` name="…"`, or `<unevaluated />`) and reads only a
-  bounded prefix. **Failure mode:** if an evaluator changes the rendering, every `patternOf`
-  refuses by name and never misreads, and the `pattern-shape` rendering-pin cell reds in CI first.
+  `<attrspat>` with ` ellipsis="1"` then ` name="…"`, or `<unevaluated />`), and the regex never
+  runs over a long name: it reads the rendering's first 1024 characters, and where a long name
+  pushes the head's close past them, the rendering's token skeleton (split on `"`, which the
+  evaluator escapes inside every attribute value, with long values elided). No length of name is
+  refused. **Failure mode:** if an evaluator changes the rendering, every read of `kind` or
+  `ellipsis` refuses by name and never misreads (`formals` still serves), and the `pattern-shape`
+  rendering-pin cell reds in CI first.
   **Option (c), not taken:** read no XML and treat every `functionArgs == { }`
   shape alike. It needs no rendering, but it cannot tell `x:` and `{ ... }:` (which accept any set)
   from `{ }:` (which accepts only the empty one), so a consumer has to hand all three the same
-  argument.
+  argument; and no builtin exposes an ellipsis, so `{ a }` and `{ a, ... }` cannot be told apart
+  under (c).
 
 ### Vendored pure utilities
 
