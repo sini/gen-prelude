@@ -140,17 +140,17 @@ Semantics are exactly those of the corresponding `builtins.*`.
   inside the parse's first 1024 characters, which an `@`-name of about 930 characters reaches) it
   refuses with a catchable `throw "gen-prelude.patternOf: …"`. **Cost:** about +12.3 thunks and
   +6.6 µs per application over `functionArgs` (upstream Nix, derived from 100000-application
-  totals, den-hoag-gtwxg), against +3 thunks and +4.5 µs for a `door` call (den-hoag-citz0); a
+  totals), against +3 thunks and +4.5 µs for a `door` call; a
   consumer pays it where it reads a pattern.
 
-  **It depends on `builtins.toXML`**, the one call in the library (`lib/pattern-shape.nix`,
-  den-hoag-a48xt arm (a)): no builtin exposes a function's `...`, so the pattern is read from the
+  **It depends on `builtins.toXML`**, the one call in the library (`lib/pattern-shape.nix`):
+  no builtin exposes a function's `...`, so the pattern is read from the
   evaluator's XML rendering of the lambda, which carries the pattern and never the body or
   defaults. The parse is anchored on that rendering's head element (`<varpat name="…" />`,
   `<attrspat>` with ` ellipsis="1"` then ` name="…"`, or `<unevaluated />`) and reads only a
   bounded prefix. **Failure mode:** if an evaluator changes the rendering, every `patternOf`
   refuses by name and never misreads, and the `pattern-shape` rendering-pin cell reds in CI first.
-  **Option (c), not taken** (den-hoag-t5hli): read no XML and treat every `functionArgs == { }`
+  **Option (c), not taken:** read no XML and treat every `functionArgs == { }`
   shape alike. It needs no rendering, but it cannot tell `x:` and `{ ... }:` (which accept any set)
   from `{ }:` (which accepts only the empty one), so a consumer has to hand all three the same
   argument.
