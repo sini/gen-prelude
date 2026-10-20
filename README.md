@@ -136,8 +136,12 @@ Semantics are exactly those of the corresponding `builtins.*`.
   `ellipsis` describe the lambda the call applies, `f.__functor f`, while for a functor publishing
   `__functionArgs`, `formals` is that published claim, so the two may describe different things
   (a `door` reads `"named"` with its derived formals). Outside its domain (not a function by
-  `isFunction`, or `__functionArgs` not an attrset of booleans) it refuses with a catchable
-  `throw "gen-prelude.patternOf: …"`.
+  `isFunction`, `__functionArgs` not an attrset of booleans, or a pattern whose head does not close
+  inside the parse's first 1024 characters, which an `@`-name of about 930 characters reaches) it
+  refuses with a catchable `throw "gen-prelude.patternOf: …"`. **Cost:** about +12.3 thunks and
+  +6.6 µs per application over `functionArgs` (upstream Nix, derived from 100000-application
+  totals, den-hoag-gtwxg), against +3 thunks and +4.5 µs for a `door` call (den-hoag-citz0); a
+  consumer pays it where it reads a pattern.
 
   **It depends on `builtins.toXML`**, the one call in the library (`lib/pattern-shape.nix`,
   den-hoag-a48xt arm (a)): no builtin exposes a function's `...`, so the pattern is read from the

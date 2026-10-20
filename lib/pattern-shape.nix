@@ -41,6 +41,10 @@ let
   refuse = msg: throw "gen-prelude.patternOf: ${msg}";
 
   # The head is read inside this many leading characters, never by a regex over the whole rendering.
+  # Why 1024: the head's overhead around an `@`-name is 81 characters (94 with `...`), so names up to
+  # 943 characters (930 with `...`) are served, past any written one; and it sits about 80 times
+  # under the subject length at which `match "….*"` overflows Determinate's C stack (between 83K
+  # and 113K characters, den-hoag-gtwxg U1 landing gate).
   prefixLength = 1024;
 
   # ★ THE ONE XML BINDING (den-hoag-a48xt arm (a), owner: "it may use (a) so long as it is well
