@@ -27,6 +27,42 @@ let
   ranOverBoom =
     strict: (builtins.tryEval (p.iterateBounded strict (st: st) { boom = throw "x"; } [ 1 ])).success;
   showKV = n: v: "${n}=${toString v}";
+  # `hasSuffix` / `removeSuffix` edge cases: match, partial, absent, empty suffix, empty subject,
+  # suffix longer than the subject, suffix equal to it.
+  suffixCases = [
+    [
+      "c"
+      "abc"
+    ]
+    [
+      "bc"
+      "abc"
+    ]
+    [
+      "x"
+      "abc"
+    ]
+    [
+      ""
+      "abc"
+    ]
+    [
+      ""
+      ""
+    ]
+    [
+      "a"
+      ""
+    ]
+    [
+      "abc"
+      "bc"
+    ]
+    [
+      "abc"
+      "abc"
+    ]
+  ];
   idxShow = i: x: "${toString i}:${toString x}";
 
   # ── unique's parity oracle ──
@@ -1264,6 +1300,196 @@ in
         expr = p.removePrefix "xy" "abcd";
         expected = lib.removePrefix "xy" "abcd";
       };
+
+      # The duals and parity primitives (den-hoag-pl8cq): each cell maps one primitive over its
+      # edge cases on both sides, so a case that disagrees reds the cell with the whole table.
+      # A path first argument is refused by both (nixpkgs throws); `tryEval` reads that as `false`.
+      test-hasSuffix =
+        let
+          run = h: map (c: h (builtins.elemAt c 0) (builtins.elemAt c 1)) suffixCases;
+        in
+        {
+          expr = {
+            cases = run p.hasSuffix;
+            path = (builtins.tryEval (p.hasSuffix ./. "x")).success;
+          };
+          expected = {
+            cases = run lib.hasSuffix;
+            path = (builtins.tryEval (lib.hasSuffix ./. "x")).success;
+          };
+        };
+      test-removeSuffix =
+        let
+          run = r: map (c: r (builtins.elemAt c 0) (builtins.elemAt c 1)) suffixCases;
+        in
+        {
+          expr = {
+            cases = run p.removeSuffix;
+            path = (builtins.tryEval (p.removeSuffix ./. "x")).success;
+          };
+          expected = {
+            cases = run lib.removeSuffix;
+            path = (builtins.tryEval (lib.removeSuffix ./. "x")).success;
+          };
+        };
+      test-concatMapStrings =
+        let
+          run =
+            c:
+            map (l: c toString l) [
+              xs
+              [ ]
+              [ "" ]
+              [
+                "a"
+                ""
+                "b"
+              ]
+            ];
+        in
+        {
+          expr = run p.concatMapStrings;
+          expected = run lib.concatMapStrings;
+        };
+      test-reverseList =
+        let
+          run =
+            r:
+            map r [
+              [ ]
+              [ 1 ]
+              xs
+              [
+                [ 1 ]
+                [ 2 ]
+              ]
+            ];
+        in
+        {
+          expr = run p.reverseList;
+          expected = run lib.reverseList;
+        };
+      test-remove =
+        let
+          run = r: [
+            (r 1 xs)
+            (r 9 xs)
+            (r 1 [ ])
+            (r { a = 1; } [
+              { a = 1; }
+              { a = 2; }
+            ])
+            (r "1" [
+              1
+              "1"
+            ])
+          ];
+        in
+        {
+          expr = run p.remove;
+          expected = run lib.remove;
+        };
+      # Separator at either end and repeated, the empty subject, an absent separator, a multi-char
+      # separator, a regex metacharacter, a non-string separator, and the subject's string context.
+      test-splitString =
+        let
+          run = sp: {
+            cases = map (c: sp (builtins.elemAt c 0) (builtins.elemAt c 1)) [
+              [
+                ","
+                "a,b,c"
+              ]
+              [
+                ","
+                ",a,,b,"
+              ]
+              [
+                ","
+                ""
+              ]
+              [
+                ","
+                ","
+              ]
+              [
+                ","
+                "abc"
+              ]
+              [
+                "ab"
+                "xabyabab"
+              ]
+              [
+                "."
+                "a.b.c"
+              ]
+              [
+                "*"
+                "a*b"
+              ]
+              [
+                1
+                "a1b"
+              ]
+            ];
+            context = map builtins.getContext (sp "/" ctxStr);
+          };
+        in
+        {
+          expr = run p.splitString;
+          expected = run lib.splitString;
+        };
+      # Nested merge, a non-attrset overriding an attrset and the converse, empty sides, depth 3.
+      test-recursiveUpdate =
+        let
+          run =
+            ru:
+            map (c: ru (builtins.elemAt c 0) (builtins.elemAt c 1)) [
+              [
+                {
+                  a = {
+                    b = 1;
+                    c = 2;
+                  };
+                  d = 3;
+                }
+                {
+                  a = {
+                    b = 9;
+                    e = 5;
+                  };
+                  f = 6;
+                }
+              ]
+              [
+                { a.b = 1; }
+                { a = 5; }
+              ]
+              [
+                { a = 5; }
+                { a.b = 1; }
+              ]
+              [
+                { }
+                { a = 1; }
+              ]
+              [
+                { a = 1; }
+                { }
+              ]
+              [
+                {
+                  a.b.c = 1;
+                  a.b.d = 2;
+                }
+                { a.b.c = 3; }
+              ]
+            ];
+        in
+        {
+          expr = run p.recursiveUpdate;
+          expected = run lib.recursiveUpdate;
+        };
 
       # toposort has NO fidelity arm because it is no longer here. Five cases stood in
       # this section — `test-toposort-{chain,dag,single,empty,cycle}` — and every one of

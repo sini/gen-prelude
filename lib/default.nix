@@ -26,6 +26,7 @@ let
     head
     isAttrs
     isList
+    isPath
     isString
     length
     listToAttrs
@@ -41,6 +42,7 @@ let
     substring
     tail
     unsafeDiscardStringContext
+    zipAttrsWith
     ;
 
   nameValuePair = name: value: { inherit name value; };
@@ -893,12 +895,77 @@ in
   concatMapStringsSep =
     sep: f: xs:
     concatStringsSep sep (map f xs);
+  concatMapStrings = f: xs: concatStringsSep "" (map f xs);
   # Ordering is gen-graph's concern, not this library's: `sort` is the primitive
   # comparator sort and stops there. The vendored nixpkgs `toposort` (with its `listDfs`
   # and list-reverse helpers) that used to sit here is retired — topological ordering now
   # has one owner, `gen-graph.topoOrder`, which is Kahn 1962 over an accessor rather than
   # this depth-first scan.
   hasPrefix = pre: s: substring 0 (stringLength pre) s == pre;
+  # hasSuffix / removeSuffix / splitString are nixpkgs lib/strings.nix's, path refusal included: a
+  # path suffix would be copied to the store and never match, so nixpkgs throws rather than answer.
+  hasSuffix =
+    suffix:
+    let
+      lenSuffix = stringLength suffix;
+    in
+    if isPath suffix then
+      throw "gen-prelude.hasSuffix: the first argument (${toString suffix}) is a path value, but only strings are supported"
+    else
+      content:
+      let
+        lenContent = stringLength content;
+      in
+      lenContent >= lenSuffix && substring (lenContent - lenSuffix) lenContent content == suffix;
+  removeSuffix =
+    suffix:
+    let
+      sufLen = stringLength suffix;
+    in
+    if isPath suffix then
+      throw "gen-prelude.removeSuffix: the first argument (${toString suffix}) is a path value, but only strings are supported"
+    else
+      str:
+      let
+        sLen = stringLength str;
+      in
+      if sufLen <= sLen && suffix == substring (sLen - sufLen) sufLen str then
+        substring 0 (sLen - sufLen) str
+      else
+        str;
+  # The separator is a literal (escaped before the regex engine sees it); each piece keeps the
+  # subject's string context, as nixpkgs' `addContextFrom s` does.
+  splitString =
+    sep:
+    let
+      escapedSep = escapeRegex (toString sep);
+    in
+    s: map (x: substring 0 0 s + x) (filter isString (split escapedSep (toString s)));
+  # nixpkgs lib/lists.nix.
+  reverseList =
+    xs:
+    let
+      lastIndex = length xs - 1;
+    in
+    genList (n: elemAt xs (lastIndex - n)) (lastIndex + 1);
+  remove = e: filter (x: x != e);
+  # nixpkgs lib/attrsets.nix `recursiveUpdate` (= `recursiveUpdateUntil` at its default stop: either
+  # side not an attrset), rhs winning at every leaf.
+  recursiveUpdate =
+    lhs: rhs:
+    let
+      f = zipAttrsWith (
+        _: values:
+        if length values == 1 || !(isAttrs (elemAt values 1) && isAttrs (head values)) then
+          head values
+        else
+          f values
+      );
+    in
+    f [
+      rhs
+      lhs
+    ];
   # nixpkgs `lib.isStringLike` (lib/strings.nix), vendored verbatim: a string, a path, or a set
   # `toString` coerces (an `outPath` set, which every derivation is, or a `__toString` set).
   isStringLike = x: builtins.isString x || builtins.isPath x || x ? outPath || x ? __toString;

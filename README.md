@@ -163,7 +163,9 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
   `builtins` re-export, not a vendored copy: the primop is linear where an accumulating
   fold rebuilds each group at every step.
 - `concatMapStringsSep sep f xs` — `map f xs` joined by `sep`.
+- `concatMapStrings f xs` — `map f xs` concatenated (`concatMapStringsSep ""`).
 - `hasPrefix pre s` — whether `s` starts with `pre`.
+- `hasSuffix suf s` — whether `s` ends with `suf`. A path `suf` is refused (thrown), as in nixpkgs.
 - `isStringLike x` — whether `toString` coerces `x`: a string, a path, or a set with `outPath` or
   `__toString` (every derivation).
 - `imap0 f xs` — `map` with a 0-based index: `f index element`.
@@ -171,6 +173,14 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
 - `max a b` — the larger of two comparables.
 - `range from to` — inclusive integer range (`[ ]` when `from > to`).
 - `removePrefix pre s` — `s` with a leading `pre` stripped (unchanged if absent).
+- `removeSuffix suf s` — `s` with a trailing `suf` stripped (unchanged if absent). A path `suf` is
+  refused (thrown), as in nixpkgs.
+- `splitString sep s` — `s` split on the literal `sep` (regex metacharacters are escaped); a
+  separator at either end yields an empty piece there, and every piece keeps `s`'s string context.
+- `reverseList xs` — `xs` in reverse order.
+- `remove e xs` — `xs` without every element `== e`.
+- `recursiveUpdate lhs rhs` — `lhs // rhs`, recursing where both sides hold an attrset at the same
+  name; anywhere else `rhs` wins.
 
 ### Door constructs
 
@@ -407,12 +417,12 @@ The `builtins` members are direct
 re-exports of the Nix `builtins` set. The vendored utilities are copied
 behavior-identically from `nixpkgs` `lib`:
 
-| Utility                                                                              | nixpkgs source                             |
-| ------------------------------------------------------------------------------------ | ------------------------------------------ |
-| `genAttrs`, `filterAttrs`, `mapAttrsToList`, `nameValuePair`, `optionalAttrs`        | `lib/attrsets.nix`                         |
-| `optional`, `last`, `init`, `unique`, `imap0`, `range`, `findFirst`                  | `lib/lists.nix`                            |
-| `optionalString`, `concatMapStringsSep`, `hasPrefix`, `removePrefix`, `isStringLike` | `lib/strings.nix`                          |
-| `fix`, `max`                                                                         | `lib/trivial.nix` / `lib/fixed-points.nix` |
+| Utility                                                                                                                                              | nixpkgs source                             |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `genAttrs`, `filterAttrs`, `mapAttrsToList`, `nameValuePair`, `optionalAttrs`, `recursiveUpdate`                                                     | `lib/attrsets.nix`                         |
+| `optional`, `last`, `init`, `unique`, `imap0`, `range`, `findFirst`, `reverseList`, `remove`                                                         | `lib/lists.nix`                            |
+| `optionalString`, `concatMapStringsSep`, `concatMapStrings`, `hasPrefix`, `hasSuffix`, `removePrefix`, `removeSuffix`, `splitString`, `isStringLike` | `lib/strings.nix`                          |
+| `fix`, `max`                                                                                                                                         | `lib/trivial.nix` / `lib/fixed-points.nix` |
 
 The `prelude-fidelity` test suite asserts each utility stays
 behavior-identical to its `nixpkgs.lib` original, so the vendoring cannot silently
