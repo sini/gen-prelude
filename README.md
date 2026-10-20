@@ -164,7 +164,7 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
   fold rebuilds each group at every step.
 - `concatMapStringsSep sep f xs` — `map f xs` joined by `sep`.
 - `concatMapStrings f xs` — `map f xs` concatenated (`concatMapStringsSep ""`).
-- `hasPrefix pre s` — whether `s` starts with `pre`.
+- `hasPrefix pre s` — whether `s` starts with `pre`. A path `pre` is refused (thrown), as in nixpkgs.
 - `hasSuffix suf s` — whether `s` ends with `suf`. A path `suf` is refused (thrown), as in nixpkgs.
 - `isStringLike x` — whether `toString` coerces `x`: a string, a path, or a set with `outPath` or
   `__toString` (every derivation).
@@ -172,7 +172,8 @@ Behavior-identical copies of `nixpkgs.lib` helpers:
 - `fix f` — least fixed point `let x = f x; in x`.
 - `max a b` — the larger of two comparables.
 - `range from to` — inclusive integer range (`[ ]` when `from > to`).
-- `removePrefix pre s` — `s` with a leading `pre` stripped (unchanged if absent).
+- `removePrefix pre s` — `s` with a leading `pre` stripped (unchanged if absent). A path `pre` is
+  refused (thrown), as in nixpkgs.
 - `removeSuffix suf s` — `s` with a trailing `suf` stripped (unchanged if absent). A path `suf` is
   refused (thrown), as in nixpkgs.
 - `splitString sep s` — `s` split on the literal `sep` (regex metacharacters are escaped); a

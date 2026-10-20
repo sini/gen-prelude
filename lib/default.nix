@@ -901,9 +901,15 @@ in
   # and list-reverse helpers) that used to sit here is retired — topological ordering now
   # has one owner, `gen-graph.topoOrder`, which is Kahn 1962 over an accessor rather than
   # this depth-first scan.
-  hasPrefix = pre: s: substring 0 (stringLength pre) s == pre;
-  # hasSuffix / removeSuffix / splitString are nixpkgs lib/strings.nix's, path refusal included: a
-  # path suffix would be copied to the store and never match, so nixpkgs throws rather than answer.
+  # hasPrefix / removePrefix / hasSuffix / removeSuffix / splitString are nixpkgs lib/strings.nix's,
+  # path refusal included: a path first argument would be copied to the store and never match, so
+  # nixpkgs throws rather than answer.
+  hasPrefix =
+    pre:
+    if isPath pre then
+      throw "gen-prelude.hasPrefix: the first argument (${toString pre}) is a path value, but only strings are supported"
+    else
+      s: substring 0 (stringLength pre) s == pre;
   hasSuffix =
     suffix:
     let
@@ -993,9 +999,12 @@ in
   max = a: b: if a > b then a else b;
   range = from: to: if from > to then [ ] else genList (i: from + i) (to - from + 1);
   removePrefix =
-    pre: s:
+    pre:
     let
       n = stringLength pre;
     in
-    if substring 0 n s == pre then substring n (stringLength s - n) s else s;
+    if isPath pre then
+      throw "gen-prelude.removePrefix: the first argument (${toString pre}) is a path value, but only strings are supported"
+    else
+      s: if substring 0 n s == pre then substring n (stringLength s - n) s else s;
 }
