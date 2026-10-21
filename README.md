@@ -164,8 +164,8 @@ Semantics are exactly those of the corresponding `builtins.*`.
   argument; and no builtin exposes an ellipsis, so `{ a }` and `{ a, ... }` cannot be told apart
   under (c).
 
-- `applicability f` — what Nix can apply, and the function it applies (`lib/applicable.nix`,
-  den-hoag-b6nyh): `{ verdict; head; }`. Nix applies a set carrying `__functor` as
+- `applicability f` — what Nix can apply, and the function it applies (`lib/applicable.nix`):
+  `{ verdict; head; }`. Nix applies a set carrying `__functor` as
   `(f.__functor f) x`, and `__functor` may itself be such a set, so the reader runs that call rule
   for one unknown argument. `verdict` is `true` when it reaches a function (`head` is that function,
   the one the argument meets), `false` when Nix would call a non-function or a `__functor` whose set
@@ -337,7 +337,7 @@ literal-expectation `prelude` suite rather than `prelude-fidelity`:
     keys
   ```
 
-- `absorb { fn; subject; at; } kept twins` — the quotient rule (den-hoag-kunjm): a collapse of
+- `absorb { fn; subject; at; } kept twins` — the quotient rule: a collapse of
   data equal under `==` but differing in string context keeps the union of the twins'
   dependency edges. A string `kept` carries it by its context. A non-string `kept` cannot, so a
   collapse that would lose an edge is refused, and so is any collapse holding a coercible set
