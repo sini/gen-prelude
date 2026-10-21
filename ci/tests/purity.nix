@@ -160,10 +160,12 @@ in
   # and the filter would silently drop — arrives here as a RED instead of as unscanned code. This
   # library is one file on purpose; growing it is a decision that gets looked at. The second file is
   # that decision: `pattern-shape.nix` holds the one XML binding as its own unit, so its parse is
-  # reachable by ci (den-hoag-gtwxg C2).
+  # reachable by ci (den-hoag-gtwxg C2). The third, `applicable.nix`, is the applicability walk as its
+  # own unit beside `patternOf`'s (den-hoag-b6nyh U1).
   flake.tests.purity.test-scan-subject-is-the-library-tree = {
     expr = builtins.readDir libDir;
     expected = {
+      "applicable.nix" = "regular";
       "default.nix" = "regular";
       "pattern-shape.nix" = "regular";
     };
@@ -206,6 +208,7 @@ in
   flake.tests.purity.test-scan-reads-are-live = {
     expr = liveReads;
     expected = [
+      "lib/applicable.nix"
       "lib/default.nix"
       "lib/pattern-shape.nix"
     ];

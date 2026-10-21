@@ -409,6 +409,14 @@ let
     || (f ? __functor && builtins.isFunction f.__functor && builtins.isFunction (f.__functor f));
   # `patternOf`, the third reader, lives in its own unit beside the one XML binding it reads through.
   inherit (import ./pattern-shape.nix { inherit isFunction functionArgs; }) patternOf;
+  # `isApplicable`, the fourth reader: what Nix can apply, by the fuelled walk in `lib/applicable.nix`.
+  inherit (import ./applicable.nix { inherit isFunction patternOf; })
+    applicableLevels
+    applicability
+    isApplicable
+    applicablePatternOf
+    applicableKindOf
+    ;
 
   # `door { name; required ? [ ]; optional ? [ ]; open ? false; } body` — a published door that
   # takes a RECORD step and publishes its field contract AS DATA (den-hoag-49yxv, defaulted and
@@ -1079,9 +1087,16 @@ in
     door
     resolve
     ;
-  # The functor-aware readers (nixpkgs `lib.isFunction` / `lib.functionArgs`), defined above, and
-  # `patternOf` (`lib/pattern-shape.nix`).
+  # The functor-aware readers (nixpkgs `lib.isFunction` / `lib.functionArgs`), defined above,
+  # `patternOf` (`lib/pattern-shape.nix`), and the applicability walk (`lib/applicable.nix`).
   inherit isFunction functionArgs patternOf;
+  inherit
+    applicableLevels
+    applicability
+    isApplicable
+    applicablePatternOf
+    applicableKindOf
+    ;
   # Drop-in for nixpkgs lib.hasInfix / lib.escapeRegex, but linear (no `.*` backtracking).
   inherit hasInfix escapeRegex;
   imap0 = f: xs: genList (i: f i (elemAt xs i)) (length xs);

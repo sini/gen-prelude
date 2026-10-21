@@ -164,6 +164,31 @@ Semantics are exactly those of the corresponding `builtins.*`.
   argument; and no builtin exposes an ellipsis, so `{ a }` and `{ a, ... }` cannot be told apart
   under (c).
 
+- `applicability f` — what Nix can apply, and the function it applies (`lib/applicable.nix`,
+  den-hoag-b6nyh): `{ verdict; head; }`. Nix applies a set carrying `__functor` as
+  `(f.__functor f) x`, and `__functor` may itself be such a set, so the reader runs that call rule
+  for one unknown argument. `verdict` is `true` when it reaches a function (`head` is that function,
+  the one the argument meets), `false` when Nix would call a non-function or a `__functor` whose set
+  pattern cannot bind the pushed set (a missing required formal, or an extra attribute without
+  `...`), and `null` when no answer comes within `applicableLevels` (32) `__functor` steps; `head`
+  is `null` unless the verdict is `true`. Applicability is only semi-decidable (a `__functor` may
+  return its own set forever), so the walk is fuelled, and an exhausted walk answers rather than
+  overflowing. It runs the caller's `__functor` code, and what that code throws, it throws. A
+  `{ }:` `__functor` reads as binding (`functionArgs` cannot tell it from `x:`).
+
+- `isApplicable f` — the bool a door asks: `builtins.isFunction f || (applicability f).verdict == true`, so a lambda costs no walk and an exhausted walk is `false`, never `null`. Unlike
+  `isFunction` (two levels), it admits every depth Nix applies within the bound: a nested functor,
+  a functor-valued `__functor`, a 32-step chain.
+
+- `applicablePatternOf f` — the pattern where the argument meets it: `patternOf f` where
+  `isFunction f` holds (so a published `__functionArgs` is honoured), else `patternOf` of the
+  reached head. Its domain is `isApplicable` values; an unapplicable value is refused by
+  `patternOf`'s name, except one whose `__functor` cannot bind its own set, on which `isFunction`
+  itself aborts, so a door asks `isApplicable` first.
+
+- `applicableKindOf v` — a refused value's kind as a door names it: `` "a functor that reaches no function within 32 `__functor` steps" `` where the walk exhausted the bound, else
+  `"a ${builtins.typeOf v}"`.
+
 ### Vendored pure utilities
 
 Behavior-identical copies of `nixpkgs.lib` helpers:
