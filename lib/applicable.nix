@@ -51,11 +51,15 @@ let
     else
       refused;
   # The one-step case first: a set whose `__functor` is a function that binds the set yields the head
-  # by one application, with no walk frame; anything else takes the fuelled walk.
+  # by one application, with no walk frame; anything else takes the fuelled walk. `binds`' own first
+  # disjunct is written out here so a `__functor` with no set pattern costs no call to `binds`.
   applicability =
     f:
     if
-      builtins.isAttrs f && f ? __functor && builtins.isFunction f.__functor && binds f.__functor f
+      builtins.isAttrs f
+      && f ? __functor
+      && builtins.isFunction f.__functor
+      && (builtins.functionArgs f.__functor == { } || binds f.__functor f)
     then
       let
         h = f.__functor f;
