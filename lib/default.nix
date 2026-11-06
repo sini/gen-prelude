@@ -347,6 +347,10 @@ let
       notAReference =
         door: form: v:
         "${door}: expected an identifier (a string) or a declaration (${form}), got a ${builtins.typeOf v} (in prelude.resolve)";
+      # A reader's refusal of a functor whose walk exhausts the bound (den-hoag-b6nyh E2).
+      functorUnbounded =
+        reader:
+        "gen-prelude.${reader}: a functor that reaches no function within ${toString applicableLevels} `__functor` steps";
     };
 
   # `checkOptions door accepted opts` — an options set is CLOSED: every field is optional, and one
@@ -391,24 +395,45 @@ let
     in
     if hits == [ ] then record else throw (refusals.guardedField door guardName (head hits));
 
-  # ── the readers (den-hoag-7gp66 P2-OQ15 arm (i)) ──
-  # nixpkgs `lib.isFunction` / `lib.functionArgs` (lib/trivial.nix), vendored verbatim: FUNCTOR-AWARE.
-  # These names were once bare `builtins` aliases, which read a functor as a non-function and abort
-  # uncatchably (`'functionArgs' requires a function`) on one — so on every `door` below. A functor
-  # carrying `__functionArgs` (nixpkgs `setFunctionArgs`, and `door`) reads that map; a lambda reads
-  # exactly what the builtin reads.
+  # ── the readers (den-hoag-7gp66 P2-OQ15 arm (i); den-hoag-b6nyh) ──
+  # nixpkgs' `lib.isFunction` / `lib.functionArgs` (lib/trivial.nix, after nixpkgs PR #574597):
+  # FUNCTOR-AWARE, through a `__functor` that is itself a functor or returns one. They give nixpkgs'
+  # answer on every functor chain within `applicableLevels` `__functor` steps, and beyond it a named
+  # refusal (`refusals.functorUnbounded`), where nixpkgs recurses until the evaluator's stack
+  # overflows (on a self-returning functor, always). `isFunction` is the applicability walk's verdict
+  # (`lib/applicable.nix`), so callability has one machine. `functionArgs` is nixpkgs' recursion,
+  # fuelled to the same bound, because nixpkgs honours a `__functionArgs` published at any returned
+  # level. A functor carrying `__functionArgs` (nixpkgs `setFunctionArgs`, and `door`) reads that
+  # map; a lambda reads exactly what the builtin reads.
   functionArgs =
-    f:
-    if f ? __functor then
-      f.__functionArgs or (builtins.functionArgs (f.__functor f))
-    else
-      builtins.functionArgs f;
+    let
+      go =
+        fuel: f:
+        if f ? __functor then
+          f.__functionArgs or (
+            if fuel == 0 then
+              throw (refusals.functorUnbounded "functionArgs")
+            else
+              go (fuel - 1) (f.__functor f)
+          )
+        else
+          builtins.functionArgs f;
+    in
+    go applicableLevels;
   isFunction =
     f:
     builtins.isFunction f
-    || (f ? __functor && builtins.isFunction f.__functor && builtins.isFunction (f.__functor f));
+    || (
+      f ? __functor
+      && (
+        let
+          verdict = (applicability f).verdict;
+        in
+        if verdict == null then throw (refusals.functorUnbounded "isFunction") else verdict
+      )
+    );
   # `patternOf`, the third reader, lives in its own unit beside the one XML binding it reads through.
-  inherit (import ./pattern-shape.nix { inherit isFunction functionArgs; }) patternOf;
+  inherit (import ./pattern-shape.nix { inherit isFunction functionArgs applicability; }) patternOf;
   # `isApplicable`, the fourth reader: what Nix can apply, by the fuelled walk in `lib/applicable.nix`.
   inherit (import ./applicable.nix { inherit isFunction patternOf; })
     applicableLevels

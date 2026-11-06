@@ -7,7 +7,8 @@
 { genPrelude, ... }:
 let
   inherit (genPrelude) door patternOf;
-  inherit (import ../../lib/pattern-shape.nix { inherit (genPrelude) isFunction functionArgs; })
+  inherit
+    (import ../../lib/pattern-shape.nix { inherit (genPrelude) isFunction functionArgs applicability; })
     parse
     ;
 
@@ -162,6 +163,16 @@ let
 in
 {
   flake.tests.pattern-shape = {
+    # A nested functor, which the call protocol applies (den-hoag-b6nyh G3): the shape is the head
+    # the walk reaches, here `x: x`.
+    test-reads-a-nested-functor = {
+      expr = patternOf { __functor = self: { __functor = self: x: x; }; };
+      expected = {
+        kind = "named";
+        formals = { };
+        ellipsis = false;
+      };
+    };
     test-named = {
       expr = patternOf (x: x);
       expected = {
@@ -457,12 +468,6 @@ in
       };
       test-refuses-a-functor-yielding-a-non-function = {
         expr = patternOf { __functor = self: 1; };
-        expectedError = refusal "the argument is not a function by prelude[.]isFunction [(]its type is set[)]";
-      };
-      # The call protocol would apply this nested functor, but `prelude.isFunction` reads it as no
-      # function, and the refusal says so in those words.
-      test-refuses-a-nested-functor = {
-        expr = patternOf { __functor = self: { __functor = self: x: x; }; };
         expectedError = refusal "the argument is not a function by prelude[.]isFunction [(]its type is set[)]";
       };
       test-formals-refuses-a-malformed-functionArgs = {

@@ -122,18 +122,23 @@ Semantics are exactly those of the corresponding `builtins.*`.
 
 ### Readers
 
-- `isFunction f` / `functionArgs f` — nixpkgs `lib.isFunction` / `lib.functionArgs`, vendored
-  verbatim: **functor-aware**. A functor carrying `__functionArgs` (nixpkgs `setFunctionArgs`, and
-  every `door` below) is a function, and its published map is its arguments; on a lambda they
+- `isFunction f` / `functionArgs f` — nixpkgs' `lib.isFunction` / `lib.functionArgs`:
+  **functor-aware**, through a `__functor` that is itself a functor or returns one. A functor
+  carrying `__functionArgs` (nixpkgs `setFunctionArgs`, and every `door` below) is a function, and
+  its published map is its arguments, at whatever returned level it is published; on a lambda they
   answer exactly what the builtins answer. They are NOT the `builtins` of the same names, which
-  read a functor as a non-function and abort uncatchably on one.
+  read a functor as a non-function and abort uncatchably on one. They give nixpkgs' answer on every
+  functor chain within `applicableLevels` (32) `__functor` steps. Beyond it, where nixpkgs recurses
+  until the stack overflows, each refuses catchably with `refusals.functorUnbounded`
+  (`` "gen-prelude.isFunction: a functor that reaches no function within 32 `__functor` steps" ``).
+  `isFunction` is `applicability`'s verdict; `functionArgs` is nixpkgs' recursion on the same fuel.
 
 - `patternOf f` — the shape of a function's pattern, `{ kind; formals; ellipsis; }`, every field
   always present. `kind` is `"named"` for `x:`, `"set"` for `{ … }:` (with or without `@`), and
   `"primop"` for a builtin or a primop application. `formals` is `functionArgs f`, and `ellipsis` is
   true exactly when a set pattern carries `...`. It answers what `functionArgs` cannot: that is
   `{ }` for `x:`, `{ }:` and `{ ... }:` alike. Functor-aware by the same rule: `kind` and
-  `ellipsis` describe the lambda the call applies, `f.__functor f`, while for a functor publishing
+  `ellipsis` describe the lambda the call applies, the head `applicability` reaches, while for a functor publishing
   `__functionArgs`, `formals` is that published claim, so the two may describe different things
   (a `door` reads `"named"` with its derived formals). Its domain is `isFunction` values: a
   non-function is refused at the record itself. The two sources are independent, so every other
@@ -176,15 +181,13 @@ Semantics are exactly those of the corresponding `builtins.*`.
   overflowing. It runs the caller's `__functor` code, and what that code throws, it throws. A
   `{ }:` `__functor` reads as binding (`functionArgs` cannot tell it from `x:`).
 
-- `isApplicable f` — the bool a door asks: `builtins.isFunction f || (applicability f).verdict == true`, so a lambda costs no walk and an exhausted walk is `false`, never `null`. Unlike
-  `isFunction` (two levels), it admits every depth Nix applies within the bound: a nested functor,
-  a functor-valued `__functor`, a 32-step chain.
+- `isApplicable f` — the bool a door asks: `builtins.isFunction f || (applicability f).verdict == true`, so a lambda costs no walk and an exhausted walk is `false`, never `null`. It
+  differs from `isFunction` only there: `isFunction` refuses an exhausted walk by name.
 
 - `applicablePatternOf f` — the pattern where the argument meets it: `patternOf f` where
   `isFunction f` holds (so a published `__functionArgs` is honoured), else `patternOf` of the
   reached head. Its domain is `isApplicable` values; an unapplicable value is refused by
-  `patternOf`'s name, except one whose `__functor` cannot bind its own set, on which `isFunction`
-  itself aborts, so a door asks `isApplicable` first.
+  `patternOf`'s name, and an exhausted walk by `isFunction`'s.
 
 - `applicableKindOf v` — a refused value's kind as a door names it: `` "a functor that reaches no function within 32 `__functor` steps" `` where the walk exhausted the bound, else
   `"a ${builtins.typeOf v}"`.

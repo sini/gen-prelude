@@ -2,7 +2,7 @@
 # head the argument meets. Every expectation is written by hand. A reached head is shown by applying
 # it to 41, since a function has no equality; the leaf answers 42. `tests` holds the verdicts, heads,
 # readers and kind texts; `testsError` pins that `applicablePatternOf` refuses an unapplicable value
-# by `patternOf`'s name, catchably.
+# by `patternOf`'s name, catchably. `readers-*` pin `isFunction` / `functionArgs`, the walk's verdict.
 { genPrelude, ... }:
 let
   inherit (genPrelude)
@@ -10,12 +10,46 @@ let
     applicableKindOf
     applicableLevels
     applicablePatternOf
+    functionArgs
     isApplicable
+    isFunction
     ;
 
   leaf = x: x + 1;
   # `n` `__functor` steps above `leaf`.
   chain = n: if n == 0 then leaf else { __functor = _: chain (n - 1); };
+  # `n` steps where each `__functor` IS the next functor (the other chain shape).
+  functorValuedChain =
+    n:
+    let
+      u = d: if d == 1 then (_: leaf) else { __functor = _: u (d - 1); };
+    in
+    {
+      __functor = u n;
+    };
+  # nixpkgs `lib.setFunctionArgs`, written out (gen-prelude has no nixpkgs).
+  sFA = f: args: {
+    __functor = _: f;
+    __functionArgs = args;
+  };
+  # nixpkgs issue #574571's cases a and b, a functor-valued `__functor`, and `setFunctionArgs` over
+  # a functor: each one Nix applies.
+  nestedReaders = [
+    { __functor = self: { __functor = self: x: x; }; }
+    {
+      __functor = {
+        __functor =
+          self1: self2: x:
+          x;
+      };
+    }
+    {
+      __functor = {
+        __functor = _: _: leaf;
+      };
+    }
+    (sFA (sFA leaf { }) { })
+  ];
   self =
     let
       s = {
@@ -90,6 +124,10 @@ let
   refusal = msg: {
     type = "ThrownError";
     msg = "^gen-prelude[.]patternOf: ${msg}$";
+  };
+  unbounded = reader: {
+    type = "ThrownError";
+    msg = "^gen-prelude[.]${reader}: a functor that reaches no function within 32 `__functor` steps$";
   };
 in
 {
@@ -269,11 +307,71 @@ in
     };
     test-applicablePatternOf-refuses-an-exhausted-walk = {
       expr = applicablePatternOf values.chain33;
-      expectedError = refusal "the argument is not a function by prelude[.]isFunction [(]its type is null[)]";
+      expectedError = unbounded "isFunction";
     };
     test-applicablePatternOf-refuses-a-non-function = {
       expr = applicablePatternOf values.int;
       expectedError = refusal "the argument is not a function by prelude[.]isFunction [(]its type is null[)]";
+    };
+  };
+
+  # `isFunction` and `functionArgs` give nixpkgs' answer (after nixpkgs PR #574597) on a nested
+  # functor, the four values of nixpkgs issue #574571 and its fix, and on a chain of exactly the
+  # bound in both shapes (den-hoag-b6nyh G4, G5).
+  flake.tests.readers-nested = {
+    test-isFunction-reads-a-nested-functor = {
+      expr = map isFunction nestedReaders;
+      expected = [
+        true
+        true
+        true
+        true
+      ];
+    };
+    test-isFunction-serves-a-chain-at-the-bound = {
+      expr = map isFunction [
+        values.chain32
+        (functorValuedChain 32)
+      ];
+      expected = [
+        true
+        true
+      ];
+    };
+    test-functionArgs-reads-a-nested-functor = {
+      expr = map functionArgs (nestedReaders ++ [ values.chain32 ]);
+      expected = [
+        { }
+        { }
+        { }
+        { }
+        { }
+      ];
+    };
+    # A `__functionArgs` published one returned level down is honoured, as nixpkgs' is.
+    test-functionArgs-reads-a-map-published-below = {
+      expr = functionArgs {
+        __functor = _: sFA leaf { x = false; };
+      };
+      expected = {
+        x = false;
+      };
+    };
+  };
+
+  # Beyond the bound nixpkgs overflows the stack; each reader refuses by name, catchably (G5, G9).
+  flake.testsError.readers-bound = {
+    test-isFunction-refuses-a-self-functor = {
+      expr = isFunction values.self;
+      expectedError = unbounded "isFunction";
+    };
+    test-isFunction-refuses-a-chain-past-the-bound = {
+      expr = isFunction values.chain33;
+      expectedError = unbounded "isFunction";
+    };
+    test-functionArgs-refuses-a-self-functor = {
+      expr = functionArgs values.self;
+      expectedError = unbounded "functionArgs";
     };
   };
 }

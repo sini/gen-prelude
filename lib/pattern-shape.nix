@@ -9,8 +9,8 @@
 #   `ellipsis`  true exactly when `kind == "set"` and the pattern carries `...`.
 #
 # A FUNCTOR is read the way `functionArgs` reads it: `kind` and `ellipsis` describe the lambda the
-# call protocol applies, `f.__functor f`, and `formals` is the functor's published claim where it
-# publishes one. So a `door` reads "named" with its derived formals: its call syntax, not its
+# call protocol applies, the head `applicability` reaches (`f.__functor f` for a one-step functor),
+# and `formals` is the functor's published claim where it publishes one. So a `door` reads "named" with its derived formals: its call syntax, not its
 # `__contract`.
 #
 # The domain is `isFunction` values. A non-function is refused at the record's WHNF, so `tryEval
@@ -21,7 +21,11 @@
 #
 # This file is its own unit so that `parse` is reachable by the ci cells that feed it perturbed
 # renderings; `lib/default.nix` publishes `patternOf` only (den-hoag-gtwxg C2).
-{ isFunction, functionArgs }:
+{
+  isFunction,
+  functionArgs,
+  applicability,
+}:
 let
   inherit (builtins)
     all
@@ -142,7 +146,7 @@ let
     f:
     let
       formals = functionArgs f;
-      shape = parse (builtins.toXML (if f ? __functor then f.__functor f else f));
+      shape = parse (builtins.toXML (if f ? __functor then (applicability f).head else f));
     in
     # `kind` and `ellipsis` describe the applied lambda, `formals` the published claim, so each
     # field carries its own source's refusal; only a non-function refuses the record itself.
