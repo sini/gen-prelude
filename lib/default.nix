@@ -405,21 +405,35 @@ let
   # fuelled to the same bound, because nixpkgs honours a `__functionArgs` published at any returned
   # level. A functor carrying `__functionArgs` (nixpkgs `setFunctionArgs`, and `door`) reads that
   # map; a lambda reads exactly what the builtin reads.
+  # The first level is written out, so a lambda, a published map and a one-step functor cost what they
+  # cost at main; the fuelled recursion is bound only on the nested-functor path, never at load.
   functionArgs =
-    let
-      go =
-        fuel: f:
-        if f ? __functor then
-          f.__functionArgs or (
-            if fuel == 0 then
-              throw (refusals.functorUnbounded "functionArgs")
-            else
-              go (fuel - 1) (f.__functor f)
-          )
+    f:
+    if f ? __functor then
+      f.__functionArgs or (
+        let
+          h = f.__functor f;
+        in
+        if h ? __functor then
+          let
+            below =
+              fuel: g:
+              if g ? __functor then
+                g.__functionArgs or (
+                  if fuel == 0 then
+                    throw (refusals.functorUnbounded "functionArgs")
+                  else
+                    below (fuel - 1) (g.__functor g)
+                )
+              else
+                builtins.functionArgs g;
+          in
+          below (applicableLevels - 1) h
         else
-          builtins.functionArgs f;
-    in
-    go applicableLevels;
+          builtins.functionArgs h
+      )
+    else
+      builtins.functionArgs f;
   isFunction =
     f:
     builtins.isFunction f
