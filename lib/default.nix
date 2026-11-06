@@ -347,10 +347,6 @@ let
       notAReference =
         door: form: v:
         "${door}: expected an identifier (a string) or a declaration (${form}), got a ${builtins.typeOf v} (in prelude.resolve)";
-      # A reader's refusal of a functor whose walk exhausts the bound (den-hoag-b6nyh E2).
-      functorUnbounded =
-        reader:
-        "gen-prelude.${reader}: a functor that reaches no function within ${toString applicableLevels} `__functor` steps";
     };
 
   # `checkOptions door accepted opts` — an options set is CLOSED: every field is optional, and one
@@ -399,7 +395,7 @@ let
   # nixpkgs' `lib.isFunction` / `lib.functionArgs` (lib/trivial.nix, after nixpkgs PR #574597):
   # FUNCTOR-AWARE, through a `__functor` that is itself a functor or returns one. They give nixpkgs'
   # answer on every functor chain within `applicableLevels` `__functor` steps, and beyond it a named
-  # refusal (`refusals.functorUnbounded`), where nixpkgs recurses until the evaluator's stack
+  # refusal (the bound, by `applicableKindOf`), where nixpkgs recurses until the evaluator's stack
   # overflows (on a self-returning functor, always). `isFunction` is the applicability walk's verdict
   # (`lib/applicable.nix`), so callability has one machine. `functionArgs` is nixpkgs' recursion,
   # fuelled to the same bound, because nixpkgs honours a `__functionArgs` published at any returned
@@ -421,7 +417,7 @@ let
               if g ? __functor then
                 g.__functionArgs or (
                   if fuel == 0 then
-                    throw (refusals.functorUnbounded "functionArgs")
+                    throw "gen-prelude.functionArgs: ${applicableKindOf f}"
                   else
                     below (fuel - 1) (g.__functor g)
                 )
@@ -452,7 +448,7 @@ let
           let
             verdict = (applicability f).verdict;
           in
-          if verdict == null then throw (refusals.functorUnbounded "isFunction") else verdict
+          if verdict == null then throw "gen-prelude.isFunction: ${applicableKindOf f}" else verdict
         )
       )
     );

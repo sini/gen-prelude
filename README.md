@@ -129,7 +129,7 @@ Semantics are exactly those of the corresponding `builtins.*`.
   answer exactly what the builtins answer. They are NOT the `builtins` of the same names, which
   read a functor as a non-function and abort uncatchably on one. They give nixpkgs' answer on every
   functor chain within `applicableLevels` (32) `__functor` steps. Beyond it, where nixpkgs recurses
-  until the stack overflows, each refuses catchably with `refusals.functorUnbounded`
+  until the stack overflows, each refuses catchably, naming the bound
   (`` "gen-prelude.isFunction: a functor that reaches no function within 32 `__functor` steps" ``).
   `isFunction` is `applicability`'s verdict; `functionArgs` is nixpkgs' recursion on the same fuel.
 

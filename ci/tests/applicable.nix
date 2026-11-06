@@ -369,6 +369,10 @@ in
       expr = isFunction values.chain33;
       expectedError = unbounded "isFunction";
     };
+    test-functionArgs-refuses-a-chain-past-the-bound = {
+      expr = functionArgs values.chain33;
+      expectedError = unbounded "functionArgs";
+    };
     test-functionArgs-refuses-a-self-functor = {
       expr = functionArgs values.self;
       expectedError = unbounded "functionArgs";
