@@ -146,7 +146,17 @@ let
     f:
     let
       formals = functionArgs f;
-      shape = parse (builtins.toXML (if f ? __functor then (applicability f).head else f));
+      # A functor's applied lambda. Read only where `isFunction f` holds, so `f.__functor f` binds; where
+      # it is a function it is the head the argument meets (no walk record), else the walk reaches it.
+      applied =
+        if f ? __functor then
+          let
+            h = f.__functor f;
+          in
+          if builtins.isFunction h then h else (applicability f).head
+        else
+          f;
+      shape = parse (builtins.toXML applied);
     in
     # `kind` and `ellipsis` describe the applied lambda, `formals` the published claim, so each
     # field carries its own source's refusal; only a non-function refuses the record itself.

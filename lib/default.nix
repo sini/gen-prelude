@@ -426,10 +426,20 @@ let
     || (
       f ? __functor
       && (
-        let
-          verdict = (applicability f).verdict;
-        in
-        if verdict == null then throw (refusals.functorUnbounded "isFunction") else verdict
+        # `applicability`'s one-step case written inline, so the common functor builds no walk record;
+        # `__functor` is bound once, so the builtins below take a variable and allocate no thunk for it.
+        (
+          let
+            fn = f.__functor;
+          in
+          builtins.isFunction fn && builtins.functionArgs fn == { } && builtins.isFunction (fn f)
+        )
+        || (
+          let
+            verdict = (applicability f).verdict;
+          in
+          if verdict == null then throw (refusals.functorUnbounded "isFunction") else verdict
+        )
       )
     );
   # `patternOf`, the third reader, lives in its own unit beside the one XML binding it reads through.
