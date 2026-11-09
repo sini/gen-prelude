@@ -21,11 +21,7 @@
 #
 # This file is its own unit so that `parse` is reachable by the ci cells that feed it perturbed
 # renderings; `lib/default.nix` publishes `patternOf` only (den-hoag-gtwxg C2).
-{
-  isFunction,
-  functionArgs,
-  applicability,
-}:
+{ isFunction, functionArgs }:
 let
   inherit (builtins)
     all
@@ -146,14 +142,21 @@ let
     f:
     let
       formals = functionArgs f;
-      # A functor's applied lambda. Read only where `isFunction f` holds, so `f.__functor f` binds; where
-      # it is a function it is the head the argument meets (no walk record), else the walk reaches it.
+      # A functor's applied lambda. Read only where `isFunction f` holds, so the walk reached a head
+      # within its bound and Nix's own call rule reaches the same one: `f.__functor f` runs the nested
+      # `__functor`s, and a returned functor is applied the same way until a function comes back.
       applied =
         if f ? __functor then
           let
             h = f.__functor f;
           in
-          if builtins.isFunction h then h else (applicability f).head
+          if builtins.isFunction h then
+            h
+          else
+            let
+              next = g: if builtins.isFunction g then g else next (g.__functor g);
+            in
+            next h
         else
           f;
       shape = parse (builtins.toXML applied);

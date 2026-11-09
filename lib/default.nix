@@ -453,7 +453,7 @@ let
       )
     );
   # `patternOf`, the third reader, lives in its own unit beside the one XML binding it reads through.
-  inherit (import ./pattern-shape.nix { inherit isFunction functionArgs applicability; }) patternOf;
+  inherit (import ./pattern-shape.nix { inherit isFunction functionArgs; }) patternOf;
   # `isApplicable`, the fourth reader: what Nix can apply, by the fuelled walk in `lib/applicable.nix`.
   inherit (import ./applicable.nix { inherit isFunction patternOf; })
     applicableLevels

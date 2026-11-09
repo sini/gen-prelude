@@ -7,8 +7,7 @@
 { genPrelude, ... }:
 let
   inherit (genPrelude) door patternOf;
-  inherit
-    (import ../../lib/pattern-shape.nix { inherit (genPrelude) isFunction functionArgs applicability; })
+  inherit (import ../../lib/pattern-shape.nix { inherit (genPrelude) isFunction functionArgs; })
     parse
     ;
 
