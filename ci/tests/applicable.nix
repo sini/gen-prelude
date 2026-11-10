@@ -13,6 +13,7 @@ let
     functionArgs
     isApplicable
     isFunction
+    patternOf
     ;
 
   leaf = x: x + 1;
@@ -346,6 +347,25 @@ in
         { }
         { }
         { }
+      ];
+    };
+    # `patternOf` reads the head a chain reaches at the bound, in both chain shapes.
+    test-patternOf-reads-a-chain-at-the-bound = {
+      expr = map patternOf [
+        values.chain32
+        (functorValuedChain 32)
+      ];
+      expected = [
+        {
+          kind = "named";
+          formals = { };
+          ellipsis = false;
+        }
+        {
+          kind = "named";
+          formals = { };
+          ellipsis = false;
+        }
       ];
     };
     # A `__functionArgs` published one returned level down is honoured, as nixpkgs' is.
