@@ -402,7 +402,8 @@ let
   # level. A functor carrying `__functionArgs` (nixpkgs `setFunctionArgs`, and `door`) reads that
   # map; a lambda reads exactly what the builtin reads.
   # The first level is written out, so a lambda, a published map and a one-step functor cost what they
-  # cost at main; the fuelled recursion is bound only on the nested-functor path, never at load.
+  # cost at main; the fuelled recursion is bound only on the nested-functor path, never at load, and
+  # under a name the library already interns, so the load adds no symbol.
   functionArgs =
     f:
     if f ? __functor then
@@ -412,19 +413,19 @@ let
         in
         if h ? __functor then
           let
-            below =
+            next =
               fuel: g:
               if g ? __functor then
                 g.__functionArgs or (
                   if fuel == 0 then
                     throw "gen-prelude.functionArgs: ${applicableKindOf f}"
                   else
-                    below (fuel - 1) (g.__functor g)
+                    next (fuel - 1) (g.__functor g)
                 )
               else
                 builtins.functionArgs g;
           in
-          below (applicableLevels - 1) h
+          next (applicableLevels - 1) h
         else
           builtins.functionArgs h
       )

@@ -142,10 +142,11 @@ let
     f:
     let
       formals = functionArgs f;
-      # A functor's applied lambda. Read only where `isFunction f` holds, so the walk reached a head
+      # The lambda the call applies. Read only where `isFunction f` holds, so the walk reached a head
       # within its bound and Nix's own call rule reaches the same one: `f.__functor f` runs the nested
       # `__functor`s, and a returned functor is applied the same way until a function comes back.
-      applied =
+      # Every binding name here is one the library already interns, so the load adds no symbol.
+      head =
         if f ? __functor then
           let
             h = f.__functor f;
@@ -159,7 +160,7 @@ let
             next h
         else
           f;
-      shape = parse (builtins.toXML applied);
+      shape = parse (builtins.toXML head);
     in
     # `kind` and `ellipsis` describe the applied lambda, `formals` the published claim, so each
     # field carries its own source's refusal; only a non-function refuses the record itself.
