@@ -142,25 +142,28 @@ let
     f:
     let
       formals = functionArgs f;
-      # The lambda the call applies. Read only where `isFunction f` holds, so the walk reached a head
-      # within its bound and Nix's own call rule reaches the same one: `f.__functor f` runs the nested
-      # `__functor`s, and a returned functor is applied the same way until a function comes back.
-      # Every binding name here is one the library already interns, so the load adds no symbol.
-      head =
-        if f ? __functor then
-          let
-            h = f.__functor f;
-          in
-          if builtins.isFunction h then
-            h
-          else
+      # `toXML` reads the lambda the call applies. Read only where `isFunction f` holds, so the walk
+      # reached a head within its bound and Nix's own call rule reaches the same one: `f.__functor f`
+      # runs the nested `__functor`s, and a returned functor is applied the same way until a function
+      # comes back. Written inside `shape`, so a lambda's read binds nothing main's does not, and under
+      # names the library already interns, so the load adds no symbol.
+      shape = parse (
+        builtins.toXML (
+          if f ? __functor then
             let
-              next = g: if builtins.isFunction g then g else next (g.__functor g);
+              h = f.__functor f;
             in
-            next h
-        else
-          f;
-      shape = parse (builtins.toXML head);
+            if builtins.isFunction h then
+              h
+            else
+              let
+                next = g: if builtins.isFunction g then g else next (g.__functor g);
+              in
+              next h
+          else
+            f
+        )
+      );
     in
     # `kind` and `ellipsis` describe the applied lambda, `formals` the published claim, so each
     # field carries its own source's refusal; only a non-function refuses the record itself.
